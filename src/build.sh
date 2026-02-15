@@ -1,8 +1,12 @@
 #!/bin/bash
 # xdv-os build pipeline:
+# - cleans prior generated xdv-os artifacts
 # - validates one compileable integration entry per required subsystem
 # - builds a bare-metal kernel binary from a composed source bundle:
-#   xdv-runtime/src/runtime_bridge.ds + xdv-kernel/sector/xdv_kernel/src/kernel.ds
+#   xdv-os/src/xdv_os_boot_contract.ds
+#   + xdv-boot/src/boot_loader_profile.ds
+#   + xdv-runtime/src/runtime_bridge.ds
+#   + xdv-kernel/sector/xdv_kernel/src/kernel.ds
 # - assembles MBR boot sector
 # - generates partitioned 64MB images:
 #     xdv-os-mbr-64m.img (MBR)
@@ -14,14 +18,36 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 OS_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 REPO_ROOT="$(cd "$OS_ROOT/.." && pwd)"
+OS_BOOT_CONTRACT_SRC="$SCRIPT_DIR/xdv_os_boot_contract.ds"
+BOOT_PROFILE_SRC="$REPO_ROOT/xdv-boot/src/boot_loader_profile.ds"
 KERNEL_SRC="$REPO_ROOT/xdv-kernel/sector/xdv_kernel/src/kernel.ds"
 RUNTIME_BRIDGE_SRC="$REPO_ROOT/xdv-runtime/src/runtime_bridge.ds"
-KERNEL_COMBINED_SRC="$SCRIPT_DIR/target/kernel_runtime_bundle.ds"
+KERNEL_COMBINED_SRC="$SCRIPT_DIR/target/xdv_os_kernel_bundle.ds"
 
 echo "=== XDV OS Build (Dust compiler + DPL) ==="
 echo "  OS root: $OS_ROOT"
 echo "  Repo root: $REPO_ROOT"
 echo
+
+echo "[0/4] Cleaning previous xdv-os artifacts..."
+CLEAN_SCRIPT="$OS_ROOT/scripts/clean_xdv_os.ps1"
+if [ ! -f "$CLEAN_SCRIPT" ]; then
+    echo "ERROR: cleanup script missing: $CLEAN_SCRIPT"
+    exit 1
+fi
+if command -v pwsh >/dev/null 2>&1; then
+    pwsh -NoProfile -File "$CLEAN_SCRIPT" -Apply
+elif command -v powershell >/dev/null 2>&1; then
+    powershell -NoProfile -ExecutionPolicy Bypass -File "$CLEAN_SCRIPT" -Apply
+else
+    echo "ERROR: clean_xdv_os.ps1 requires pwsh or powershell in PATH"
+    exit 1
+fi
+
+if [ -f "$REPO_ROOT/dust/Cargo.toml" ]; then
+    echo "[dust] Refreshing compiler..."
+    (cd "$REPO_ROOT/dust" && cargo build --release >/dev/null 2>&1 || cargo build >/dev/null 2>&1)
+fi
 
 # 1) Resolve dust compiler
 DUST_CMD=""
@@ -50,6 +76,8 @@ fi
 
 echo "[1/4] Validating required subsystem entrypoints..."
 CHECK_TARGETS=(
+    "$OS_BOOT_CONTRACT_SRC"
+    "$BOOT_PROFILE_SRC"
     "$REPO_ROOT/xdv-boot/src/boot_mbr.ds"
     "$REPO_ROOT/xdv-boot/src/boot_uefi.ds"
     "$REPO_ROOT/xdv-boot/src/boot_stage1.ds"
@@ -100,10 +128,14 @@ for file in "${CHECK_TARGETS[@]}"; do
     "$DUST_CMD" check "$file" >/dev/null
 done
 
-echo "[2/4] Compiling kernel from DPL (kernel + runtime bridge)..."
+echo "[2/4] Compiling Dust boot chain bundle..."
 cd "$SCRIPT_DIR"
 mkdir -p "$SCRIPT_DIR/target"
-cat "$RUNTIME_BRIDGE_SRC" "$KERNEL_SRC" > "$KERNEL_COMBINED_SRC"
+cat \
+    "$OS_BOOT_CONTRACT_SRC" \
+    "$BOOT_PROFILE_SRC" \
+    "$RUNTIME_BRIDGE_SRC" \
+    "$KERNEL_SRC" > "$KERNEL_COMBINED_SRC"
 "$DUST_CMD" obj "$KERNEL_COMBINED_SRC" --bare-metal -o kernel.bin
 
 echo "[3/4] Assembling boot sector (NASM)..."

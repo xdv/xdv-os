@@ -1,8 +1,12 @@
 @echo off
 REM xdv-os build pipeline:
+REM - cleans prior generated xdv-os artifacts
 REM - validates one compileable integration entry per required subsystem
 REM - builds a bare-metal kernel binary from a composed source bundle:
-REM   xdv-runtime/src/runtime_bridge.ds + xdv-kernel/sector/xdv_kernel/src/kernel.ds
+REM   xdv-os/src/xdv_os_boot_contract.ds
+REM   + xdv-boot/src/boot_loader_profile.ds
+REM   + xdv-runtime/src/runtime_bridge.ds
+REM   + xdv-kernel/sector/xdv_kernel/src/kernel.ds
 REM - assembles MBR boot sector
 REM - generates partitioned 64MB images:
 REM     xdv-os-mbr-64m.img (MBR)
@@ -31,14 +35,35 @@ cd /d "%~dp0"
 
 set "OS_ROOT=%~dp0.."
 set "REPO_ROOT=%~dp0..\.."
+set "CLEAN_SCRIPT=%OS_ROOT%\scripts\clean_xdv_os.ps1"
+set "OS_BOOT_CONTRACT_SRC=%~dp0xdv_os_boot_contract.ds"
+set "BOOT_PROFILE_SRC=%REPO_ROOT%\xdv-boot\src\boot_loader_profile.ds"
 set "KERNEL_SRC=%REPO_ROOT%\xdv-kernel\sector\xdv_kernel\src\kernel.ds"
 set "RUNTIME_BRIDGE_SRC=%REPO_ROOT%\xdv-runtime\src\runtime_bridge.ds"
-set "KERNEL_COMBINED_SRC=%~dp0target\kernel_runtime_bundle.ds"
+set "KERNEL_COMBINED_SRC=%~dp0target\xdv_os_kernel_bundle.ds"
 
 echo === XDV OS Build (Dust compiler + DPL) ===
 echo   OS root: %OS_ROOT%
 echo   Repo root: %REPO_ROOT%
 echo.
+
+echo [0/4] Cleaning previous xdv-os artifacts...
+if not exist "%CLEAN_SCRIPT%" (
+    echo ERROR: cleanup script missing: %CLEAN_SCRIPT%
+    exit /b 1
+)
+powershell -NoProfile -ExecutionPolicy Bypass -File "%CLEAN_SCRIPT%" -Apply
+if %ERRORLEVEL% neq 0 (
+    echo ERROR: cleanup script failed
+    exit /b 1
+)
+
+if exist "%REPO_ROOT%\dust\Cargo.toml" (
+    echo [dust] Refreshing compiler...
+    pushd "%REPO_ROOT%\dust" >nul
+    cargo build --release >nul 2>nul || cargo build >nul 2>nul
+    popd >nul
+)
 
 REM 1) Resolve dust compiler
 set "DUST_CMD="
@@ -72,6 +97,8 @@ if not defined DUST_CMD (
 )
 
 echo [1/4] Validating required subsystem entrypoints...
+call :check_file "%OS_BOOT_CONTRACT_SRC%" || exit /b 1
+call :check_file "%BOOT_PROFILE_SRC%" || exit /b 1
 call :check_file "%REPO_ROOT%\xdv-boot\src\boot_mbr.ds" || exit /b 1
 call :check_file "%REPO_ROOT%\xdv-boot\src\boot_uefi.ds" || exit /b 1
 call :check_file "%REPO_ROOT%\xdv-boot\src\boot_stage1.ds" || exit /b 1
@@ -112,11 +139,19 @@ call :check_file "%REPO_ROOT%\xdv-xdvfs-utils\src\xdvfs_utils_space.ds" || exit 
 call :check_file "%REPO_ROOT%\xdv-xdvfs-utils\src\xdvfs_utils_perm.ds" || exit /b 1
 call :check_file "%REPO_ROOT%\xdv-xdvfs-utils\src\xdvfs_utils_cli.ds" || exit /b 1
 
-echo [2/4] Compiling kernel from DPL (kernel + runtime bridge)...
+echo [2/4] Compiling Dust boot chain bundle...
 if not exist "%~dp0target" mkdir "%~dp0target"
-copy /b "%RUNTIME_BRIDGE_SRC%"+"%KERNEL_SRC%" "%KERNEL_COMBINED_SRC%" >nul
+(
+    type "%OS_BOOT_CONTRACT_SRC%"
+    echo.
+    type "%BOOT_PROFILE_SRC%"
+    echo.
+    type "%RUNTIME_BRIDGE_SRC%"
+    echo.
+    type "%KERNEL_SRC%"
+) > "%KERNEL_COMBINED_SRC%"
 if %ERRORLEVEL% neq 0 (
-    echo ERROR: Failed to compose kernel/runtime source bundle
+    echo ERROR: Failed to compose xdv-os/xdv-boot/xdv-runtime/xdv-kernel source bundle
     exit /b 1
 )
 "%DUST_CMD%" obj "%KERNEL_COMBINED_SRC%" --bare-metal -o kernel.bin

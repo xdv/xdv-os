@@ -1,13 +1,13 @@
-; XDV OS boot sector (MBR style, partition-aware).
-; Loads the kernel from the active partition:
-;   absolute_lba = partition_start_lba + KERNEL_REL_LBA
-; Then enters protected mode and jumps to 0x10000.
+; XDV OS boot sector stage-0 (MBR, partition-aware).
+; Reads the xdvfs boot record from the boot partition and loads kernel
+; using metadata fields (relative LBA + sector count).
+; This stage is transport only; boot policy remains defined in Dust.
 
 [ORG 0x7C00]
 [BITS 16]
 
-KERNEL_REL_LBA  equ 32
-KERNEL_SECTORS  equ 128
+BOOTREC_BUFFER_SEG equ 0x0000
+BOOTREC_BUFFER_OFF equ 0x0600
 KERNEL_LOAD_SEG equ 0x1000
 KERNEL_LOAD_OFF equ 0x0000
 
@@ -47,11 +47,42 @@ start:
 .active_found:
     ; Partition start LBA is +8 in a 16-byte MBR partition entry.
     mov eax, [si + 8]
-    add eax, KERNEL_REL_LBA
-    mov [dap_lba_low], eax
+    test eax, eax
+    jz disk_error
+    mov [partition_start_lba], eax
     mov dword [dap_lba_high], 0
 
-    mov word [dap_count], KERNEL_SECTORS
+    ; Read xdvfs boot record (XDVFSBR0) at partition start LBA.
+    mov word [dap_count], 1
+    mov word [dap_offset], BOOTREC_BUFFER_OFF
+    mov word [dap_segment], BOOTREC_BUFFER_SEG
+    mov [dap_lba_low], eax
+
+    mov si, disk_address_packet
+    mov dl, [boot_drive]
+    mov ah, 0x42
+    int 0x13
+    jc disk_error
+
+    ; Validate boot record signature and sector trailer.
+    mov si, BOOTREC_BUFFER_OFF
+    cmp dword [si + 0], 0x46564458   ; "XDVF"
+    jne disk_error
+    cmp dword [si + 4], 0x30524253   ; "SBR0"
+    jne disk_error
+    cmp word [si + 510], 0xAA55
+    jne disk_error
+
+    ; boot record offsets:
+    ; +16 kernel relative LBA (u32)
+    ; +20 kernel sectors (u32, low 16 used by INT13h packet)
+    mov eax, [si + 16]
+    add eax, [partition_start_lba]
+    mov [dap_lba_low], eax
+    mov ax, [si + 20]
+    test ax, ax
+    jz disk_error
+    mov [dap_count], ax
     mov word [dap_offset], KERNEL_LOAD_OFF
     mov word [dap_segment], KERNEL_LOAD_SEG
 
@@ -92,6 +123,7 @@ print16:
     ret
 
 boot_drive db 0x80
+partition_start_lba dd 0
 
 ; INT13 extended read packet (16 bytes).
 disk_address_packet:

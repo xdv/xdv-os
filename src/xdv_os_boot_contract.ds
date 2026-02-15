@@ -1,0 +1,20 @@
+// XDV OS boot contract. This is the Dust-defined orchestration entry used by xdv-kernel.
+
+forge XdvOsBootContract {
+
+    const STATUS_OK: UInt32 = 0;
+    const STATUS_VERSION: UInt32 = 3;
+
+    proc K::xdv_os_boot_contract() -> UInt32 {
+        emit "xdv-os: boot contract online";
+        emit "xdv-os: contract chain xdv-boot -> xdv-kernel -> xdv-shell";
+        emit "xdv-os: xdvfs target image size = 64MB";
+        boot_loader_main();
+        emit "xdv-os: boot contract complete";
+        return STATUS_OK;
+    }
+
+    proc K::xdv_os_boot_contract_version() -> UInt32 {
+        return STATUS_VERSION;
+    }
+}

@@ -83,6 +83,7 @@ function Get-RepoRelativePath([string]$RootPath, [string]$Path) {
 function New-PreloadPayload([string]$RepoRootPath, [int]$SizeMb) {
     $entries = New-Object System.Collections.Generic.List[object]
     $payloadRoots = @(
+        "xdv-os\src",
         "xdv-core\src",
         "xdv-edx\src",
         "xdv-shell\src"
@@ -92,7 +93,8 @@ function New-PreloadPayload([string]$RepoRootPath, [int]$SizeMb) {
 XDV preload manifest
 image-size-mb=$SizeMb
 boot-kernel-rel-lba=$KernelRelLba
-packages=xdv-core,xdv-edx,xdv-shell
+packages=xdv-os,xdv-core,xdv-edx,xdv-shell
+boot-chain=xdv-boot->xdv-kernel->xdv-shell
 shell-prompt=#:
 commands=cd ls cat mkdir rm echo ps help exit edx
 "@
@@ -107,7 +109,9 @@ commands=cd ls cat mkdir rm echo ps help exit edx
         if (-not (Test-Path $fullRoot)) {
             throw "Missing preload root: $fullRoot"
         }
-        $files = Get-ChildItem -Path $fullRoot -File -Recurse -Filter *.ds | Sort-Object FullName
+        $files = Get-ChildItem -Path $fullRoot -File -Recurse -Filter *.ds |
+            Where-Object { $_.FullName -notmatch '[\\/]target[\\/]' } |
+            Sort-Object FullName
         foreach ($file in $files) {
             $entries.Add([PSCustomObject]@{
                 Path = (Get-RepoRelativePath $RepoRootPath $file.FullName)

@@ -25,7 +25,7 @@ $keepRelative = @(
     "boot_sector.asm",
     "build.bat",
     "build.sh",
-    "kernel_entry.ds"
+    "xdv_os_boot_contract.ds"
 )
 
 $keepSet = @{}

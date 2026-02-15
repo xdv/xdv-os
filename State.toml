@@ -17,7 +17,8 @@ dustlib_k = "../dustlib_k"
 dust_runtime = "../dust_runtime"
 
 [workspace.entrypoints]
-xdv_boot = "../xdv-boot/src/boot_stage1.ds"
+xdv_os = "src/xdv_os_boot_contract.ds"
+xdv_boot = "../xdv-boot/src/boot_loader_profile.ds"
 xdv_kernel = "../xdv-kernel/sector/xdv_kernel/src/kernel.ds"
 xdv_xdvfs = "../xdv-xdvfs/src/xdvfs_mount.ds"
 xdv_runtime = "../xdv-runtime/src/runtime_bridge.ds"

@@ -18,6 +18,20 @@ cd xdv-os/src
 ./build.sh
 ```
 
+## Clean
+
+PowerShell cleanup script (dry-run by default):
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File xdv-os/scripts/clean_xdv_os.ps1
+```
+
+Apply deletion:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File xdv-os/scripts/clean_xdv_os.ps1 -Apply
+```
+
 ## Artifacts
 
 The build now emits partitioned 64MB disk images:
@@ -28,7 +42,11 @@ The build now emits partitioned 64MB disk images:
 
 ## Image Contents
 
-- `xdv-boot` boot path metadata and BIOS stage machine code.
-- `xdv-kernel` + `xdv-runtime` combined bare-metal kernel binary.
+- Dust boot chain bundle:
+  `xdv-os/src/xdv_os_boot_contract.ds`
+  + `xdv-boot/src/boot_loader_profile.ds`
+  + `xdv-runtime/src/runtime_bridge.ds`
+  + `xdv-kernel/sector/xdv_kernel/src/kernel.ds`.
+- BIOS stage-0 machine code that reads xdvfs boot-record metadata (kernel LBA/sectors).
 - `xdvfs` superblock and layout markers.
-- preload payload with `xdv-core`, `xdv-edx`, and `xdv-shell`.
+- preload payload with `xdv-os`, `xdv-core`, `xdv-edx`, and `xdv-shell`.
