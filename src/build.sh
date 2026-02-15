@@ -2,10 +2,14 @@
 # xdv-os build pipeline:
 # - cleans prior generated xdv-os artifacts
 # - validates one compileable integration entry per required subsystem
-# - builds a bare-metal kernel binary from a composed source bundle:
+# - builds a runtime kernel profile from xdv-kernel:
+#   xdv-kernel/sector/xdv_kernel/src/kernel_runtime_shell.asm
+# - composes a Dust boot-chain bundle for traceability:
 #   xdv-os/src/xdv_os_boot_contract.ds
 #   + xdv-boot/src/boot_loader_profile.ds
 #   + xdv-runtime/src/runtime_bridge.ds
+#   + xdv-shell/src/shell_boot_units.ds
+#   + xdv-shell/src/shell_bridge.ds
 #   + xdv-kernel/sector/xdv_kernel/src/kernel.ds
 # - assembles MBR boot sector
 # - generates partitioned 64MB images:
@@ -20,7 +24,10 @@ OS_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 REPO_ROOT="$(cd "$OS_ROOT/.." && pwd)"
 OS_BOOT_CONTRACT_SRC="$SCRIPT_DIR/xdv_os_boot_contract.ds"
 BOOT_PROFILE_SRC="$REPO_ROOT/xdv-boot/src/boot_loader_profile.ds"
+SHELL_BOOT_UNITS_SRC="$REPO_ROOT/xdv-shell/src/shell_boot_units.ds"
+SHELL_BRIDGE_SRC="$REPO_ROOT/xdv-shell/src/shell_bridge.ds"
 KERNEL_SRC="$REPO_ROOT/xdv-kernel/sector/xdv_kernel/src/kernel.ds"
+KERNEL_RUNTIME_ASM="$REPO_ROOT/xdv-kernel/sector/xdv_kernel/src/kernel_runtime_shell.asm"
 RUNTIME_BRIDGE_SRC="$REPO_ROOT/xdv-runtime/src/runtime_bridge.ds"
 KERNEL_COMBINED_SRC="$SCRIPT_DIR/target/xdv_os_kernel_bundle.ds"
 
@@ -87,7 +94,8 @@ CHECK_TARGETS=(
     "$REPO_ROOT/xdv-xdvfs/src/xdvfs_partition.ds"
     "$REPO_ROOT/xdv-xdvfs/src/xdvfs_format.ds"
     "$RUNTIME_BRIDGE_SRC"
-    "$REPO_ROOT/xdv-shell/src/shell_bridge.ds"
+    "$SHELL_BOOT_UNITS_SRC"
+    "$SHELL_BRIDGE_SRC"
     "$REPO_ROOT/xdv-edx/src/edx_bridge.ds"
     "$REPO_ROOT/dustlib/sector/dustlib_core/src/xdv_os_bridge.ds"
     "$REPO_ROOT/dustlib_k/sector/dustlib_k/lib.ds"
@@ -128,21 +136,28 @@ for file in "${CHECK_TARGETS[@]}"; do
     "$DUST_CMD" check "$file" >/dev/null
 done
 
-echo "[2/4] Compiling Dust boot chain bundle..."
+if [ ! -f "$KERNEL_RUNTIME_ASM" ]; then
+    echo "ERROR: missing runtime kernel profile: $KERNEL_RUNTIME_ASM"
+    exit 1
+fi
+
+echo "[2/4] Composing Dust boot chain bundle..."
 cd "$SCRIPT_DIR"
 mkdir -p "$SCRIPT_DIR/target"
 cat \
     "$OS_BOOT_CONTRACT_SRC" \
     "$BOOT_PROFILE_SRC" \
     "$RUNTIME_BRIDGE_SRC" \
+    "$SHELL_BOOT_UNITS_SRC" \
+    "$SHELL_BRIDGE_SRC" \
     "$KERNEL_SRC" > "$KERNEL_COMBINED_SRC"
-"$DUST_CMD" obj "$KERNEL_COMBINED_SRC" --bare-metal -o kernel.bin
 
-echo "[3/4] Assembling boot sector (NASM)..."
+echo "[3/4] Assembling runtime kernel + boot sector (NASM)..."
 if ! command -v nasm >/dev/null 2>&1; then
     echo "ERROR: NASM required. Install with: sudo apt install nasm"
     exit 1
 fi
+nasm -f bin "$KERNEL_RUNTIME_ASM" -o kernel.bin
 nasm -f bin boot_sector.asm -o boot_sector.bin
 
 echo "[4/4] Creating 64MB partitioned images..."

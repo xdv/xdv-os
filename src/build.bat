@@ -2,10 +2,14 @@
 REM xdv-os build pipeline:
 REM - cleans prior generated xdv-os artifacts
 REM - validates one compileable integration entry per required subsystem
-REM - builds a bare-metal kernel binary from a composed source bundle:
+REM - builds a runtime kernel profile from xdv-kernel:
+REM   xdv-kernel/sector/xdv_kernel/src/kernel_runtime_shell.asm
+REM - composes a Dust boot-chain bundle for traceability:
 REM   xdv-os/src/xdv_os_boot_contract.ds
 REM   + xdv-boot/src/boot_loader_profile.ds
 REM   + xdv-runtime/src/runtime_bridge.ds
+REM   + xdv-shell/src/shell_boot_units.ds
+REM   + xdv-shell/src/shell_bridge.ds
 REM   + xdv-kernel/sector/xdv_kernel/src/kernel.ds
 REM - assembles MBR boot sector
 REM - generates partitioned 64MB images:
@@ -38,7 +42,10 @@ set "REPO_ROOT=%~dp0..\.."
 set "CLEAN_SCRIPT=%OS_ROOT%\scripts\clean_xdv_os.ps1"
 set "OS_BOOT_CONTRACT_SRC=%~dp0xdv_os_boot_contract.ds"
 set "BOOT_PROFILE_SRC=%REPO_ROOT%\xdv-boot\src\boot_loader_profile.ds"
+set "SHELL_BOOT_UNITS_SRC=%REPO_ROOT%\xdv-shell\src\shell_boot_units.ds"
+set "SHELL_BRIDGE_SRC=%REPO_ROOT%\xdv-shell\src\shell_bridge.ds"
 set "KERNEL_SRC=%REPO_ROOT%\xdv-kernel\sector\xdv_kernel\src\kernel.ds"
+set "KERNEL_RUNTIME_ASM=%REPO_ROOT%\xdv-kernel\sector\xdv_kernel\src\kernel_runtime_shell.asm"
 set "RUNTIME_BRIDGE_SRC=%REPO_ROOT%\xdv-runtime\src\runtime_bridge.ds"
 set "KERNEL_COMBINED_SRC=%~dp0target\xdv_os_kernel_bundle.ds"
 
@@ -108,7 +115,12 @@ call :check_file "%REPO_ROOT%\xdv-xdvfs\src\xdvfs_storage_device.ds" || exit /b 
 call :check_file "%REPO_ROOT%\xdv-xdvfs\src\xdvfs_partition.ds" || exit /b 1
 call :check_file "%REPO_ROOT%\xdv-xdvfs\src\xdvfs_format.ds" || exit /b 1
 call :check_file "%RUNTIME_BRIDGE_SRC%" || exit /b 1
-call :check_file "%REPO_ROOT%\xdv-shell\src\shell_bridge.ds" || exit /b 1
+call :check_file "%SHELL_BOOT_UNITS_SRC%" || exit /b 1
+call :check_file "%SHELL_BRIDGE_SRC%" || exit /b 1
+if not exist "%KERNEL_RUNTIME_ASM%" (
+    echo ERROR: missing runtime kernel profile: %KERNEL_RUNTIME_ASM%
+    exit /b 1
+)
 call :check_file "%REPO_ROOT%\xdv-edx\src\edx_bridge.ds" || exit /b 1
 call :check_file "%REPO_ROOT%\dustlib\sector\dustlib_core\src\xdv_os_bridge.ds" || exit /b 1
 call :check_file "%REPO_ROOT%\dustlib_k\sector\dustlib_k\lib.ds" || exit /b 1
@@ -139,7 +151,7 @@ call :check_file "%REPO_ROOT%\xdv-xdvfs-utils\src\xdvfs_utils_space.ds" || exit 
 call :check_file "%REPO_ROOT%\xdv-xdvfs-utils\src\xdvfs_utils_perm.ds" || exit /b 1
 call :check_file "%REPO_ROOT%\xdv-xdvfs-utils\src\xdvfs_utils_cli.ds" || exit /b 1
 
-echo [2/4] Compiling Dust boot chain bundle...
+echo [2/4] Composing Dust boot chain bundle...
 if not exist "%~dp0target" mkdir "%~dp0target"
 (
     type "%OS_BOOT_CONTRACT_SRC%"
@@ -148,22 +160,26 @@ if not exist "%~dp0target" mkdir "%~dp0target"
     echo.
     type "%RUNTIME_BRIDGE_SRC%"
     echo.
+    type "%SHELL_BOOT_UNITS_SRC%"
+    echo.
+    type "%SHELL_BRIDGE_SRC%"
+    echo.
     type "%KERNEL_SRC%"
 ) > "%KERNEL_COMBINED_SRC%"
 if %ERRORLEVEL% neq 0 (
-    echo ERROR: Failed to compose xdv-os/xdv-boot/xdv-runtime/xdv-kernel source bundle
-    exit /b 1
-)
-"%DUST_CMD%" obj "%KERNEL_COMBINED_SRC%" --bare-metal -o kernel.bin
-if %ERRORLEVEL% neq 0 (
-    echo ERROR: dust obj failed
+    echo ERROR: Failed to compose xdv-os/xdv-boot/xdv-runtime/xdv-shell/xdv-kernel source bundle
     exit /b 1
 )
 
-echo [3/4] Assembling boot sector (NASM)...
+echo [3/4] Assembling runtime kernel + boot sector (NASM)...
 where nasm >nul 2>&1
 if %ERRORLEVEL% neq 0 (
     echo ERROR: NASM not found. Install from https://www.nasm.us/
+    exit /b 1
+)
+nasm -f bin "%KERNEL_RUNTIME_ASM%" -o kernel.bin
+if %ERRORLEVEL% neq 0 (
+    echo ERROR: NASM failed building runtime kernel profile
     exit /b 1
 )
 nasm -f bin boot_sector.asm -o boot_sector.bin
