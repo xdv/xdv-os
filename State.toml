@@ -1,0 +1,31 @@
+# XDV OS Workspace Manifest
+# Complete XDV Operating System
+
+[workspace]
+name = "xdv_os"
+version = "0.2.0"
+description = "XDV OS - Complete Operating System in DPL"
+
+[workspace.sectors]
+xdv_boot = "../xdv-boot"
+xdv_kernel = "../xdv-kernel"
+xdv_xdvfs = "../xdv-xdvfs"
+xdv_runtime = "../xdv-runtime"
+xdv_shell = "../xdv-shell"
+dustlib = "../dustlib"
+dustlib_k = "../dustlib_k"
+dust_runtime = "../dust_runtime"
+
+[workspace.entrypoints]
+xdv_boot = "../xdv-boot/src/boot_stage1.ds"
+xdv_kernel = "../xdv-kernel/sector/xdv_kernel/src/kernel.ds"
+xdv_xdvfs = "../xdv-xdvfs/src/xdvfs_mount.ds"
+xdv_runtime = "../xdv-runtime/src/runtime_bridge.ds"
+xdv_shell = "../xdv-shell/src/shell_bridge.ds"
+dustlib = "../dustlib/sector/dustlib_core/src/xdv_os_bridge.ds"
+dustlib_k = "../dustlib_k/sector/dustlib_k/lib.ds"
+dust_runtime = "../dust_runtime/src/runtime_bridge.ds"
+
+[target.x64-pc-none]
+linker = "ld"
+linker_flags = ["-nostdlib", "-static"]
