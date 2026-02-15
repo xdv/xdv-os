@@ -3,6 +3,7 @@
 forge XdvRuntimeBridge {
     const BRIDGE_VERSION: UInt32 = 2;
     const RUNTIME_OK: UInt32 = 0;
+    const SHELL_OK: UInt32 = 0;
 
     proc K::init() -> UInt32 {
         emit "xdv-runtime bridge online";
@@ -11,6 +12,7 @@ forge XdvRuntimeBridge {
 
     proc K::start_userspace() -> UInt32 {
         emit "xdv-runtime userspace bootstrap ready";
+        shell_bootstrap();
         return bridge_runtime_main();
     }
 
@@ -22,6 +24,17 @@ forge XdvRuntimeBridge {
     proc K::bridge_runtime_main() -> UInt32 {
         emit "xdv-runtime: handoff complete";
         return RUNTIME_OK;
+    }
+
+    proc K::shell_bootstrap() -> UInt32 {
+        emit "xdv-shell bridge online";
+        emit "xdv-shell: initializing";
+        emit "XDV Shell online";
+        emit "Prompt mode: #:";
+        emit "xdv-shell: command dispatcher ready";
+        emit "Available commands: cd ls cat mkdir rm echo ps help exit edx";
+        emit "#:";
+        return SHELL_OK;
     }
 }
 // XDV Kernel - Main Kernel Sector

@@ -3,7 +3,11 @@
 # - validates one compileable integration entry per required subsystem
 # - builds a bare-metal kernel binary from a composed source bundle:
 #   xdv-runtime/src/runtime_bridge.ds + xdv-kernel/sector/xdv_kernel/src/kernel.ds
-# - assembles MBR boot sector and packs xdv-os.img
+# - assembles MBR boot sector
+# - generates partitioned 64MB images:
+#     xdv-os-mbr-64m.img (MBR)
+#     xdv-os-uefi-64m.img (GPT/ESP + xdvfs)
+#   and xdv-os.img as alias to the MBR artifact
 
 set -euo pipefail
 
@@ -46,6 +50,8 @@ fi
 
 echo "[1/4] Validating required subsystem entrypoints..."
 CHECK_TARGETS=(
+    "$REPO_ROOT/xdv-boot/src/boot_mbr.ds"
+    "$REPO_ROOT/xdv-boot/src/boot_uefi.ds"
     "$REPO_ROOT/xdv-boot/src/boot_stage1.ds"
     "$KERNEL_SRC"
     "$REPO_ROOT/xdv-xdvfs/src/xdvfs_mount.ds"
@@ -107,15 +113,31 @@ if ! command -v nasm >/dev/null 2>&1; then
 fi
 nasm -f bin boot_sector.asm -o boot_sector.bin
 
-echo "[4/4] Creating disk image..."
-dd if=/dev/zero of=xdv-os.img bs=1M count=1 status=none
-dd if=boot_sector.bin of=xdv-os.img conv=notrunc status=none
-dd if=kernel.bin of=xdv-os.img bs=512 seek=2 conv=notrunc status=none
-printf '\x80' | dd of=xdv-os.img bs=1 seek=446 count=1 conv=notrunc status=none
-printf '\x83' | dd of=xdv-os.img bs=1 seek=450 count=1 conv=notrunc status=none
+echo "[4/4] Creating 64MB partitioned images..."
+if command -v pwsh >/dev/null 2>&1; then
+    pwsh -NoProfile -File build_images.ps1 \
+        -BootSectorPath "boot_sector.bin" \
+        -KernelPath "kernel.bin" \
+        -RepoRoot "$REPO_ROOT" \
+        -OutputDir "$SCRIPT_DIR" \
+        -ImageSizeMB 64
+elif command -v powershell >/dev/null 2>&1; then
+    powershell -NoProfile -ExecutionPolicy Bypass -File build_images.ps1 \
+        -BootSectorPath "boot_sector.bin" \
+        -KernelPath "kernel.bin" \
+        -RepoRoot "$REPO_ROOT" \
+        -OutputDir "$SCRIPT_DIR" \
+        -ImageSizeMB 64
+else
+    echo "ERROR: build_images.ps1 requires pwsh or powershell in PATH"
+    exit 1
+fi
 
 echo
 echo "=== Build complete ==="
-echo "  Output: $SCRIPT_DIR/xdv-os.img"
-echo "  Run in VirtualBox: Other/64-bit, 64MB RAM, attach xdv-os.img as disk."
+echo "  Output (MBR):  $SCRIPT_DIR/xdv-os-mbr-64m.img"
+echo "  Output (UEFI): $SCRIPT_DIR/xdv-os-uefi-64m.img"
+echo "  Alias:         $SCRIPT_DIR/xdv-os.img"
+echo "  VirtualBox BIOS: attach xdv-os-mbr-64m.img (or xdv-os.img)"
+echo "  VirtualBox UEFI: enable EFI and attach xdv-os-uefi-64m.img"
 echo

@@ -1,8 +1,15 @@
-; XDV OS boot sector (MBR style).
-; Loads kernel from sector 2, enters protected mode, jumps to 0x10000.
+; XDV OS boot sector (MBR style, partition-aware).
+; Loads the kernel from the active partition:
+;   absolute_lba = partition_start_lba + KERNEL_REL_LBA
+; Then enters protected mode and jumps to 0x10000.
 
 [ORG 0x7C00]
 [BITS 16]
+
+KERNEL_REL_LBA  equ 32
+KERNEL_SECTORS  equ 128
+KERNEL_LOAD_SEG equ 0x1000
+KERNEL_LOAD_OFF equ 0x0000
 
     jmp short start
     nop
@@ -16,23 +23,41 @@ start:
     mov sp, 0x7C00
     mov [boot_drive], dl
 
-    ; Reset disk.
-    xor ah, ah
+    ; Require INT13 extensions for LBA reads.
+    mov ah, 0x41
+    mov bx, 0x55AA
+    mov dl, [boot_drive]
     int 0x13
     jc disk_error
+    cmp bx, 0xAA55
+    jne disk_error
+    test cx, 0x0001
+    jz disk_error
 
-    ; Read kernel from CHS 0/0/3 into 0x1000:0000 (physical 0x10000).
-    ; build.{bat,sh} writes kernel.bin at LBA 2 (offset 1024), which is sector 3 in CHS.
-    ; 8 sectors is enough for current kernel.bin and stays in track.
-    mov ax, 0x1000
-    mov es, ax
-    xor bx, bx
-    mov ah, 0x02
-    mov al, 0x08
-    mov ch, 0x00
-    mov cl, 0x03
-    mov dh, 0x00
+    ; Prefer active partition; fallback to partition entry 0.
+    mov si, partition_table
+    mov cx, 4
+.find_active:
+    cmp byte [si], 0x80
+    je .active_found
+    add si, 16
+    loop .find_active
+    mov si, partition_table
+
+.active_found:
+    ; Partition start LBA is +8 in a 16-byte MBR partition entry.
+    mov eax, [si + 8]
+    add eax, KERNEL_REL_LBA
+    mov [dap_lba_low], eax
+    mov dword [dap_lba_high], 0
+
+    mov word [dap_count], KERNEL_SECTORS
+    mov word [dap_offset], KERNEL_LOAD_OFF
+    mov word [dap_segment], KERNEL_LOAD_SEG
+
+    mov si, disk_address_packet
     mov dl, [boot_drive]
+    mov ah, 0x42
     int 0x13
     jc disk_error
 
@@ -67,7 +92,23 @@ print16:
     ret
 
 boot_drive db 0x80
-err_msg db 'BOOTERR', 0
+
+; INT13 extended read packet (16 bytes).
+disk_address_packet:
+    db 0x10
+    db 0x00
+dap_count:
+    dw 0
+dap_offset:
+    dw 0
+dap_segment:
+    dw 0
+dap_lba_low:
+    dd 0
+dap_lba_high:
+    dd 0
+
+err_msg db 'XDVBOOT ERR', 0
 
 ; Protected mode descriptors.
 gdt:
@@ -95,5 +136,6 @@ protected_mode_entry:
 [BITS 16]
 ; MBR sector layout: boot code (0..445), partition table (446..509), signature.
 times 446 - ($ - $$) db 0
+partition_table:
 times 64 db 0
 dw 0xAA55

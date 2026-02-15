@@ -3,7 +3,11 @@ REM xdv-os build pipeline:
 REM - validates one compileable integration entry per required subsystem
 REM - builds a bare-metal kernel binary from a composed source bundle:
 REM   xdv-runtime/src/runtime_bridge.ds + xdv-kernel/sector/xdv_kernel/src/kernel.ds
-REM - assembles MBR boot sector and packs xdv-os.img
+REM - assembles MBR boot sector
+REM - generates partitioned 64MB images:
+REM     xdv-os-mbr-64m.img (MBR)
+REM     xdv-os-uefi-64m.img (GPT/ESP + xdvfs)
+REM   and xdv-os.img as alias to the MBR artifact
 
 goto :main
 
@@ -68,6 +72,8 @@ if not defined DUST_CMD (
 )
 
 echo [1/4] Validating required subsystem entrypoints...
+call :check_file "%REPO_ROOT%\xdv-boot\src\boot_mbr.ds" || exit /b 1
+call :check_file "%REPO_ROOT%\xdv-boot\src\boot_uefi.ds" || exit /b 1
 call :check_file "%REPO_ROOT%\xdv-boot\src\boot_stage1.ds" || exit /b 1
 call :check_file "%KERNEL_SRC%" || exit /b 1
 call :check_file "%REPO_ROOT%\xdv-xdvfs\src\xdvfs_mount.ds" || exit /b 1
@@ -131,28 +137,24 @@ if %ERRORLEVEL% neq 0 (
     exit /b 1
 )
 
-echo [4/4] Creating disk image...
-powershell -NoProfile -Command ^
-  "$img = New-Object byte[] 1048576; " ^
-  "$boot = [System.IO.File]::ReadAllBytes('boot_sector.bin'); " ^
-  "$kern = [System.IO.File]::ReadAllBytes('kernel.bin'); " ^
-  "[Array]::Copy($boot, 0, $img, 0, $boot.Length); " ^
-  "[Array]::Copy($kern, 0, $img, 1024, $kern.Length); " ^
-  "[System.IO.File]::WriteAllBytes('xdv-os.img', $img)"
+echo [4/4] Creating 64MB partitioned images...
+powershell -NoProfile -ExecutionPolicy Bypass -File build_images.ps1 ^
+  -BootSectorPath "boot_sector.bin" ^
+  -KernelPath "kernel.bin" ^
+  -RepoRoot "%REPO_ROOT%" ^
+  -OutputDir "%~dp0." ^
+  -ImageSizeMB 64
 if %ERRORLEVEL% neq 0 (
-    echo ERROR: Failed to create image
+    echo ERROR: Failed to create partitioned images
     exit /b 1
 )
 
-REM Set boot flag and partition type
-powershell -NoProfile -Command ^
-  "$f = [System.IO.File]::Open('xdv-os.img', [System.IO.FileMode]::Open, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None); " ^
-  "$f.Seek(446, [System.IO.SeekOrigin]::Begin); $f.WriteByte(0x80); " ^
-  "$f.Seek(450, [System.IO.SeekOrigin]::Begin); $f.WriteByte(0x83); $f.Close()"
-
 echo.
 echo === Build complete ===
-echo   Output: %~dp0xdv-os.img
-echo   Run in VirtualBox: Other/64-bit, 64MB RAM, attach xdv-os.img as disk.
+echo   Output (MBR):  %~dp0xdv-os-mbr-64m.img
+echo   Output (UEFI): %~dp0xdv-os-uefi-64m.img
+echo   Alias:         %~dp0xdv-os.img
+echo   VirtualBox BIOS: attach xdv-os-mbr-64m.img (or xdv-os.img)
+echo   VirtualBox UEFI: enable EFI and attach xdv-os-uefi-64m.img
 echo.
 exit /b 0
