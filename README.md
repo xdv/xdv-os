@@ -52,6 +52,9 @@ The build now emits partitioned 64MB disk images:
 - Runtime kernel profile:
   `xdv-kernel/sector/xdv_kernel/src/kernel_runtime_shell.asm`
   (US keyboard layout, command buffer, builtin dispatch for `cd ls cat mkdir rm echo ps help exit edx`).
-- BIOS stage-0 machine code that reads xdvfs boot-record metadata (kernel LBA/sectors).
+- BIOS stage-0 machine code that reads xdvfs boot-record metadata (`boot.bin` LBA/sectors).
+- Linked binaries staged into xdvfs:
+  - `boot.bin` from xdv-boot contract chain
+  - `kernel.bin` from xdv-kernel + xdv-runtime + xdv-xdvfs
 - `xdvfs` superblock and layout markers.
 - preload payload with `xdv-os`, `xdv-core`, `xdv-edx`, and `xdv-shell`.

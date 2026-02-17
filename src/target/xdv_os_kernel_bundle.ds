@@ -6,11 +6,19 @@ forge XdvOsBootContract {
     const STATUS_VERSION: UInt32 = 3;
 
     proc K::xdv_os_boot_contract() -> UInt32 {
-        emit "xdv-os: boot contract online";
-        emit "xdv-os: contract chain xdv-boot -> xdv-kernel -> xdv-shell";
-        emit "xdv-os: xdvfs target image size = 64MB";
-        boot_loader_main();
-        emit "xdv-os: boot contract complete";
+        emit "";
+        emit "";
+        emit "";
+        emit "";
+        emit "";
+        emit "";
+        emit "";
+        emit "";
+        emit "                  XX   XX   DDDDD    VV     VV";
+        emit "                   XX XX    DD  DD    VV   VV ";
+        emit "                    XXX     DD   DD    VV VV  ";
+        emit "                   XX XX    DD  DD      VVV   ";
+        emit "                  XX   XX   DDDDD        V    ";
         return STATUS_OK;
     }
 
@@ -19,52 +27,22 @@ forge XdvOsBootContract {
     }
 }
 
-// XDV-Boot: codegen-safe loader profile for xdv-os boot orchestration.
+// XDV-Boot legacy loader profile entry kept for compatibility.
 
 forge BootLoaderProfile {
-
     const BOOT_OK: UInt32 = 0;
-    const BOOT_PROFILE_VERSION: UInt32 = 3;
-    const XDVFS_IMAGE_SIZE_MB: UInt32 = 64;
-    const XDVFS_PARTITION_START_LBA: UInt32 = 2048;
-    const XDVFS_SUPERBLOCK_REL_LBA: UInt32 = 8;
-    const XDVFS_KERNEL_REL_LBA: UInt32 = 32;
-    const XDVFS_PRELOAD_REL_LBA: UInt32 = 128;
 
-    proc K::boot_loader_main() -> UInt32 {
-        emit "xdv-boot: loader profile online";
-        emit "xdv-boot: boot mode auto-detect (MBR/UEFI)";
-        boot_loader_detect_mode();
-        boot_loader_mount_xdvfs();
-        boot_loader_load_kernel();
-        boot_loader_handoff_kernel();
+    proc K::boot_loader_detect_mode(depth: UInt32) -> UInt32 {
         return BOOT_OK;
     }
+}
 
-    proc K::boot_loader_detect_mode() -> UInt32 {
-        emit "xdv-boot: probing MBR path";
-        emit "xdv-boot: probing UEFI path";
-        emit "xdv-boot: selected available firmware path";
-        return BOOT_OK;
-    }
+// XDV-Boot splash path for xdv-os integration.
 
-    proc K::boot_loader_mount_xdvfs() -> UInt32 {
-        emit "xdv-boot: mounting xdvfs boot partition";
-        emit "xdv-boot: xdvfs partition start LBA = 2048";
-        emit "xdv-boot: xdvfs superblock rel LBA = 8";
-        return BOOT_OK;
-    }
+forge XdvOsBootContract {
+    const BOOT_OK: UInt32 = 0;
 
-    proc K::boot_loader_load_kernel() -> UInt32 {
-        emit "xdv-boot: loading xdv-kernel from xdvfs";
-        emit "xdv-boot: xdv-kernel rel LBA = 32";
-        emit "xdv-boot: preload rel LBA = 128";
-        return BOOT_OK;
-    }
-
-    proc K::boot_loader_handoff_kernel() -> UInt32 {
-        emit "xdv-boot: handoff to xdv-kernel entry";
-        emit "xdv-boot: xdvfs image profile = 64MB";
+    proc K::boot_splash_contract() -> UInt32 {
         return BOOT_OK;
     }
 }
@@ -201,7 +179,7 @@ forge XdvKernel {
 
     proc K::init_kernel_boot() -> UInt32 {
         emit "Initializing XDV Kernel v0.2.0";
-        emit "Build date: 2026-02-12";
+        emit "Build date: 2026-02-15";
         emit "Booting on K-Domain (x64/Intel/AMD)";
         emit "K-Domain (x64): ONLINE";
         return STATUS_OK;

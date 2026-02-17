@@ -1,6 +1,6 @@
 ; XDV OS boot sector stage-0 (MBR, partition-aware).
-; Reads the xdvfs boot record from the boot partition and loads kernel
-; using metadata fields (relative LBA + sector count).
+; Reads the xdvfs boot record from the boot partition, loads boot.bin first,
+; then loads kernel.bin and performs the handoff chain.
 ; This stage is transport only; boot policy remains defined in Dust.
 
 [ORG 0x7C00]
@@ -8,8 +8,15 @@
 
 BOOTREC_BUFFER_SEG equ 0x0000
 BOOTREC_BUFFER_OFF equ 0x0600
-KERNEL_LOAD_SEG equ 0x1000
+BOOT_LOAD_SEG equ 0x1000
+BOOT_LOAD_OFF equ 0x0000
+KERNEL_LOAD_SEG equ 0x2000
 KERNEL_LOAD_OFF equ 0x0000
+BOOT_STAGE_ADDR equ 0x00010000
+KERNEL_STAGE_ADDR equ 0x00020000
+PAGE_TABLE_PML4 equ 0x00009000
+PAGE_TABLE_PDPT equ 0x0000A000
+PAGE_TABLE_PD   equ 0x0000B000
 
     jmp short start
     nop
@@ -23,34 +30,11 @@ start:
     mov sp, 0x7C00
     mov [boot_drive], dl
 
-    ; Require INT13 extensions for LBA reads.
-    mov ah, 0x41
-    mov bx, 0x55AA
-    mov dl, [boot_drive]
-    int 0x13
-    jc disk_error
-    cmp bx, 0xAA55
-    jne disk_error
-    test cx, 0x0001
-    jz disk_error
-
-    ; Prefer active partition; fallback to partition entry 0.
+    ; Use partition entry 0 from MBR table.
     mov si, partition_table
-    mov cx, 4
-.find_active:
-    cmp byte [si], 0x80
-    je .active_found
-    add si, 16
-    loop .find_active
-    mov si, partition_table
-
-.active_found:
     ; Partition start LBA is +8 in a 16-byte MBR partition entry.
     mov eax, [si + 8]
-    test eax, eax
-    jz disk_error
     mov [partition_start_lba], eax
-    mov dword [dap_lba_high], 0
 
     ; Read xdvfs boot record (XDVFSBR0) at partition start LBA.
     mov word [dap_count], 1
@@ -64,24 +48,33 @@ start:
     int 0x13
     jc disk_error
 
-    ; Validate boot record signature and sector trailer.
-    mov si, BOOTREC_BUFFER_OFF
-    cmp dword [si + 0], 0x46564458   ; "XDVF"
-    jne disk_error
-    cmp dword [si + 4], 0x30524253   ; "SBR0"
-    jne disk_error
-    cmp word [si + 510], 0xAA55
-    jne disk_error
-
     ; boot record offsets:
-    ; +16 kernel relative LBA (u32)
-    ; +20 kernel sectors (u32, low 16 used by INT13h packet)
+    ; +16 boot.bin relative LBA
+    ; +20 boot.bin sectors
+    ; +40 boot.bin entry offset from image base (0x00100000)
+    ; +32 kernel.bin relative LBA
+    ; +36 kernel.bin sectors
+    ; +44 kernel.bin entry offset from image base (0x00100000)
+    mov si, BOOTREC_BUFFER_OFF
     mov eax, [si + 16]
     add eax, [partition_start_lba]
     mov [dap_lba_low], eax
     mov ax, [si + 20]
-    test ax, ax
-    jz disk_error
+    mov [dap_count], ax
+    mov word [dap_offset], BOOT_LOAD_OFF
+    mov word [dap_segment], BOOT_LOAD_SEG
+
+    mov si, disk_address_packet
+    mov dl, [boot_drive]
+    mov ah, 0x42
+    int 0x13
+    jc disk_error
+
+    mov si, BOOTREC_BUFFER_OFF
+    mov eax, [si + 32]
+    add eax, [partition_start_lba]
+    mov [dap_lba_low], eax
+    mov ax, [si + 36]
     mov [dap_count], ax
     mov word [dap_offset], KERNEL_LOAD_OFF
     mov word [dap_segment], KERNEL_LOAD_SEG
@@ -106,21 +99,7 @@ start:
     jmp 0x08:protected_mode_entry
 
 disk_error:
-    mov si, err_msg
-    call print16
     jmp $
-
-print16:
-    lodsb
-    or al, al
-    jz .done
-    mov ah, 0x0E
-    mov bh, 0x00
-    mov bl, 0x07
-    int 0x10
-    jmp print16
-.done:
-    ret
 
 boot_drive db 0x80
 partition_start_lba dd 0
@@ -140,13 +119,12 @@ dap_lba_low:
 dap_lba_high:
     dd 0
 
-err_msg db 'XDVBOOT ERR', 0
-
 ; Protected mode descriptors.
 gdt:
     dq 0x0000000000000000
-    dq 0x00CF9A000000FFFF   ; 0x08 code segment
+    dq 0x00CF9A000000FFFF   ; 0x08 protected-mode code segment
     dq 0x00CF92000000FFFF   ; 0x10 data segment
+    dq 0x00AF9A000000FFFF   ; 0x18 long-mode code segment
 gdt_end:
 
 gdt_desc:
@@ -163,7 +141,50 @@ protected_mode_entry:
     mov gs, ax
     mov ss, ax
     mov esp, 0x90000
-    jmp 0x08:0x10000
+
+    ; Prepare minimal identity mapping for long mode (0-2MB via 2MB page).
+    mov edi, PAGE_TABLE_PML4
+    xor eax, eax
+    mov ecx, (4096 * 3) / 4
+    rep stosd
+
+    mov dword [PAGE_TABLE_PML4 + 0], PAGE_TABLE_PDPT | 0x03
+    mov dword [PAGE_TABLE_PML4 + 4], 0
+    mov dword [PAGE_TABLE_PDPT + 0], PAGE_TABLE_PD | 0x03
+    mov dword [PAGE_TABLE_PDPT + 4], 0
+    mov dword [PAGE_TABLE_PD + 0], 0x00000083
+    mov dword [PAGE_TABLE_PD + 4], 0
+
+    mov eax, PAGE_TABLE_PML4
+    mov cr3, eax
+    mov eax, cr4
+    or eax, 0x00000020             ; CR4.PAE
+    mov cr4, eax
+
+    mov ecx, 0xC0000080            ; IA32_EFER
+    rdmsr
+    or eax, 0x00000100             ; EFER.LME
+    wrmsr
+
+    mov eax, cr0
+    or eax, 0x80000000             ; CR0.PG
+    mov cr0, eax
+
+    jmp 0x18:long_mode_entry
+
+[BITS 64]
+long_mode_entry:
+    mov rsp, 0x90000
+    mov eax, [BOOTREC_BUFFER_OFF + 40]
+    add eax, BOOT_STAGE_ADDR
+    call rax
+
+    mov eax, [BOOTREC_BUFFER_OFF + 44]
+    add eax, KERNEL_STAGE_ADDR
+    call rax
+
+.hang:
+    jmp .hang
 
 [BITS 16]
 ; MBR sector layout: boot code (0..445), partition table (446..509), signature.

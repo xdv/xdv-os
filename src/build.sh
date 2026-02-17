@@ -2,8 +2,9 @@
 # xdv-os build pipeline:
 # - cleans prior generated xdv-os artifacts
 # - validates one compileable integration entry per required subsystem
-# - builds a runtime kernel profile from xdv-kernel:
-#   xdv-kernel/sector/xdv_kernel/src/kernel_runtime_shell.asm
+# - compiles GCC-style object sets with dust obj for boot and kernel sources
+# - links boot.bin with dustlink from xdv-boot object set
+# - links kernel.bin with dustlink from xdv-kernel + xdv-runtime + xdv-xdvfs object set
 # - composes a Dust boot-chain bundle for traceability:
 #   xdv-os/src/xdv_os_boot_contract.ds
 #   + xdv-boot/src/boot_loader_profile.ds
@@ -24,19 +25,35 @@ OS_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 REPO_ROOT="$(cd "$OS_ROOT/.." && pwd)"
 OS_BOOT_CONTRACT_SRC="$SCRIPT_DIR/xdv_os_boot_contract.ds"
 BOOT_PROFILE_SRC="$REPO_ROOT/xdv-boot/src/boot_loader_profile.ds"
+BOOT_SPLASH_PROFILE_SRC="$REPO_ROOT/xdv-boot/src/boot_splash_profile.ds"
 SHELL_BOOT_UNITS_SRC="$REPO_ROOT/xdv-shell/src/shell_boot_units.ds"
 SHELL_BRIDGE_SRC="$REPO_ROOT/xdv-shell/src/shell_bridge.ds"
 KERNEL_SRC="$REPO_ROOT/xdv-kernel/sector/xdv_kernel/src/kernel.ds"
-KERNEL_RUNTIME_ASM="$REPO_ROOT/xdv-kernel/sector/xdv_kernel/src/kernel_runtime_shell.asm"
 RUNTIME_BRIDGE_SRC="$REPO_ROOT/xdv-runtime/src/runtime_bridge.ds"
 KERNEL_COMBINED_SRC="$SCRIPT_DIR/target/xdv_os_kernel_bundle.ds"
+BOOT_OBJ_STAGE_DIR="$SCRIPT_DIR/target/dust/obj_stage_boot"
+KERNEL_OBJ_STAGE_DIR="$SCRIPT_DIR/target/dust/obj_stage_kernel"
+BOOT_MAP_PATH="$SCRIPT_DIR/target/dust/boot.map"
+KERNEL_MAP_PATH="$SCRIPT_DIR/target/dust/kernel.map"
+BOOT_ENTRY_OFFSET=0
+KERNEL_ENTRY_OFFSET=0
+BOOT_BIN_PATH="boot.bin"
+KERNEL_BIN_PATH="kernel.bin"
+DUSTLINK_CMD="$REPO_ROOT/dustlink/target/release/dustlink"
+BOOT_ENTRY_SYMBOL="XdvOsBootContract::boot_splash_contract"
+KERNEL_ENTRY_SYMBOL="XdvKernel::kernel_start"
+BOOT_LINK_ENTRY="boot_splash_contract"
+KERNEL_LINK_ENTRY="kernel_start"
+if [ -f "$REPO_ROOT/dustlink/target/release/dustlink.exe" ]; then
+    DUSTLINK_CMD="$REPO_ROOT/dustlink/target/release/dustlink.exe"
+fi
 
 echo "=== XDV OS Build (Dust compiler + DPL) ==="
 echo "  OS root: $OS_ROOT"
 echo "  Repo root: $REPO_ROOT"
 echo
 
-echo "[0/4] Cleaning previous xdv-os artifacts..."
+echo "[0/7] Cleaning previous xdv-os artifacts..."
 CLEAN_SCRIPT="$OS_ROOT/scripts/clean_xdv_os.ps1"
 if [ ! -f "$CLEAN_SCRIPT" ]; then
     echo "ERROR: cleanup script missing: $CLEAN_SCRIPT"
@@ -81,10 +98,29 @@ if [ -z "$DUST_CMD" ] || [ ! -x "$DUST_CMD" ]; then
     exit 1
 fi
 
-echo "[1/4] Validating required subsystem entrypoints..."
+if [ ! -f "$DUSTLINK_CMD" ]; then
+    if [ -f "$REPO_ROOT/dustlink/Cargo.toml" ]; then
+        echo "[dustlink] Building dustlink frontend..."
+        (cd "$REPO_ROOT/dustlink" && cargo build --release >/dev/null 2>&1 || cargo build >/dev/null 2>&1)
+        if [ -f "$REPO_ROOT/dustlink/target/release/dustlink.exe" ]; then
+            DUSTLINK_CMD="$REPO_ROOT/dustlink/target/release/dustlink.exe"
+        elif [ -f "$REPO_ROOT/dustlink/target/release/dustlink" ]; then
+            DUSTLINK_CMD="$REPO_ROOT/dustlink/target/release/dustlink"
+        fi
+    fi
+fi
+
+if [ ! -f "$DUSTLINK_CMD" ]; then
+    echo "ERROR: dustlink not found at $DUSTLINK_CMD"
+    echo "       Build from $REPO_ROOT/dustlink with: cargo build --release"
+    exit 1
+fi
+
+echo "[1/7] Validating required subsystem entrypoints..."
 CHECK_TARGETS=(
     "$OS_BOOT_CONTRACT_SRC"
     "$BOOT_PROFILE_SRC"
+    "$BOOT_SPLASH_PROFILE_SRC"
     "$REPO_ROOT/xdv-boot/src/boot_mbr.ds"
     "$REPO_ROOT/xdv-boot/src/boot_uefi.ds"
     "$REPO_ROOT/xdv-boot/src/boot_stage1.ds"
@@ -115,6 +151,7 @@ CHECK_TARGETS=(
     "$REPO_ROOT/xdv-core/src/xdv_core_security_app.ds"
     "$REPO_ROOT/xdv-core/src/xdv_core_recovery_app.ds"
     "$REPO_ROOT/xdv-core/src/xdv_core_cli.ds"
+    "$REPO_ROOT/xdv-core/src/xdv_core_command_profile.ds"
     "$REPO_ROOT/xdv-xdvfs-utils/src/xdvfs_utils_partition.ds"
     "$REPO_ROOT/xdv-xdvfs-utils/src/xdvfs_utils_mkfs.ds"
     "$REPO_ROOT/xdv-xdvfs-utils/src/xdvfs_utils_fsck.ds"
@@ -136,42 +173,114 @@ for file in "${CHECK_TARGETS[@]}"; do
     "$DUST_CMD" check "$file" >/dev/null
 done
 
-if [ ! -f "$KERNEL_RUNTIME_ASM" ]; then
-    echo "ERROR: missing runtime kernel profile: $KERNEL_RUNTIME_ASM"
-    exit 1
-fi
-
-echo "[2/4] Composing Dust boot chain bundle..."
+echo "[2/7] Composing Dust boot chain bundle..."
 cd "$SCRIPT_DIR"
 mkdir -p "$SCRIPT_DIR/target"
 cat \
     "$OS_BOOT_CONTRACT_SRC" \
     "$BOOT_PROFILE_SRC" \
+    "$BOOT_SPLASH_PROFILE_SRC" \
     "$RUNTIME_BRIDGE_SRC" \
     "$SHELL_BOOT_UNITS_SRC" \
     "$SHELL_BRIDGE_SRC" \
     "$KERNEL_SRC" > "$KERNEL_COMBINED_SRC"
 
-echo "[3/4] Assembling runtime kernel + boot sector (NASM)..."
+echo "[3/7] Compiling boot object set via Dust obj..."
+"$DUST_CMD" obj \
+    "$OS_BOOT_CONTRACT_SRC" \
+    "$REPO_ROOT/xdv-boot/src" \
+    --out-dir "$BOOT_OBJ_STAGE_DIR" \
+    --target "x86_64-pc-none-elf" \
+    --entry "$BOOT_ENTRY_SYMBOL" \
+    --auto-entry true \
+    --skip-tests true
+
+echo "[4/7] Compiling kernel object set via Dust obj..."
+"$DUST_CMD" obj \
+    "$KERNEL_COMBINED_SRC" \
+    "$REPO_ROOT/xdv-xdvfs/src" \
+    --out-dir "$KERNEL_OBJ_STAGE_DIR" \
+    --target "x86_64-pc-none-elf" \
+    --entry "$KERNEL_ENTRY_SYMBOL" \
+    --auto-entry true \
+    --skip-tests true
+
 if ! command -v nasm >/dev/null 2>&1; then
     echo "ERROR: NASM required. Install with: sudo apt install nasm"
     exit 1
 fi
-nasm -f bin "$KERNEL_RUNTIME_ASM" -o kernel.bin
+
+echo "[5/7] Linking boot.bin via dustlink..."
+shopt -s nullglob
+boot_objs=("$BOOT_OBJ_STAGE_DIR"/*.o)
+if [ ${#boot_objs[@]} -eq 0 ]; then
+    echo "ERROR: no boot objects found in $BOOT_OBJ_STAGE_DIR"
+    exit 1
+fi
+echo "  [boot-link] frontend: $DUSTLINK_CMD"
+"$DUSTLINK_CMD" \
+    -m elf_x86_64 \
+    -nostdlib \
+    --oformat=binary \
+    --image-base 0x10000 \
+    -Ttext 0x10000 \
+    -Map "$BOOT_MAP_PATH" \
+    -e "$BOOT_LINK_ENTRY" \
+    -o "$BOOT_BIN_PATH" \
+    "${boot_objs[@]}"
+boot_entry_hex="$(awk '/[[:space:]]boot_splash_contract$/ {print $1; exit}' "$BOOT_MAP_PATH")"
+if [ -z "$boot_entry_hex" ]; then
+    echo "ERROR: Failed to resolve boot entry offset from $BOOT_MAP_PATH"
+    exit 1
+fi
+BOOT_ENTRY_OFFSET=$((16#$boot_entry_hex - 0x10000))
+echo "  [boot-link] entry offset: $BOOT_ENTRY_OFFSET"
+
+echo "[6/7] Linking kernel.bin via dustlink + assembling boot sector (NASM)..."
+kernel_objs=("$KERNEL_OBJ_STAGE_DIR"/*.o)
+if [ ${#kernel_objs[@]} -eq 0 ]; then
+    echo "ERROR: no kernel objects found in $KERNEL_OBJ_STAGE_DIR"
+    exit 1
+fi
+echo "  [kernel-link] frontend: $DUSTLINK_CMD"
+"$DUSTLINK_CMD" \
+    -m elf_x86_64 \
+    -nostdlib \
+    --oformat=binary \
+    --image-base 0x20000 \
+    -Ttext 0x20000 \
+    --allow-multiple-definition \
+    -Map "$KERNEL_MAP_PATH" \
+    -e "$KERNEL_LINK_ENTRY" \
+    -o "$KERNEL_BIN_PATH" \
+    "${kernel_objs[@]}"
+kernel_entry_hex="$(awk '/[[:space:]]kernel_start$/ {print $1; exit}' "$KERNEL_MAP_PATH")"
+if [ -z "$kernel_entry_hex" ]; then
+    echo "ERROR: Failed to resolve kernel entry offset from $KERNEL_MAP_PATH"
+    exit 1
+fi
+KERNEL_ENTRY_OFFSET=$((16#$kernel_entry_hex - 0x20000))
+echo "  [kernel-link] entry offset: $KERNEL_ENTRY_OFFSET"
 nasm -f bin boot_sector.asm -o boot_sector.bin
 
-echo "[4/4] Creating 64MB partitioned images..."
+echo "[7/7] Creating 64MB partitioned images..."
 if command -v pwsh >/dev/null 2>&1; then
     pwsh -NoProfile -File build_images.ps1 \
         -BootSectorPath "boot_sector.bin" \
-        -KernelPath "kernel.bin" \
+        -BootPath "$BOOT_BIN_PATH" \
+        -KernelPath "$KERNEL_BIN_PATH" \
+        -BootEntryOffset "$BOOT_ENTRY_OFFSET" \
+        -KernelEntryOffset "$KERNEL_ENTRY_OFFSET" \
         -RepoRoot "$REPO_ROOT" \
         -OutputDir "$SCRIPT_DIR" \
         -ImageSizeMB 64
 elif command -v powershell >/dev/null 2>&1; then
     powershell -NoProfile -ExecutionPolicy Bypass -File build_images.ps1 \
         -BootSectorPath "boot_sector.bin" \
-        -KernelPath "kernel.bin" \
+        -BootPath "$BOOT_BIN_PATH" \
+        -KernelPath "$KERNEL_BIN_PATH" \
+        -BootEntryOffset "$BOOT_ENTRY_OFFSET" \
+        -KernelEntryOffset "$KERNEL_ENTRY_OFFSET" \
         -RepoRoot "$REPO_ROOT" \
         -OutputDir "$SCRIPT_DIR" \
         -ImageSizeMB 64

@@ -1,6 +1,9 @@
 param(
     [string]$BootSectorPath = "boot_sector.bin",
+    [string]$BootPath = "boot.bin",
     [string]$KernelPath = "kernel.bin",
+    [UInt32]$BootEntryOffset = 0,
+    [UInt32]$KernelEntryOffset = 0,
     [string]$RepoRoot = (Resolve-Path "..\..").Path,
     [string]$OutputDir = ".",
     [int]$ImageSizeMB = 64
@@ -11,10 +14,12 @@ $ErrorActionPreference = "Stop"
 
 $SectorSize = 512
 $MbrPartitionStartLba = [UInt32]2048
-$KernelRelLba = [UInt32]32
+$BootRelLba = [UInt32]32
+$BootSectors = [UInt32]128
+$KernelRelLba = [UInt32]160
 $KernelSectors = [UInt32]128
 $SuperblockRelLba = [UInt32]8
-$PreloadRelLba = [UInt32]128
+$PreloadRelLba = [UInt32]288
 $XdvfsPartitionType = [byte]0xE3
 
 function Align-Up([int64]$Value, [int64]$Alignment) {
@@ -89,10 +94,11 @@ function New-PreloadPayload([string]$RepoRootPath, [int]$SizeMb) {
         "xdv-shell\src"
     )
 
-    $manifestText = @"
+$manifestText = @"
 XDV preload manifest
 image-size-mb=$SizeMb
-boot-kernel-rel-lba=$KernelRelLba
+boot-bin-rel-lba=$BootRelLba
+kernel-bin-rel-lba=$KernelRelLba
 packages=xdv-os,xdv-core,xdv-edx,xdv-shell
 boot-chain=xdv-boot->xdv-kernel->xdv-shell
 shell-prompt=#:
@@ -161,11 +167,17 @@ function Write-XdvfsLayout(
     [byte[]]$Image,
     [UInt32]$PartitionStartLba,
     [UInt32]$PartitionSectorCount,
+    [byte[]]$BootBytes,
     [byte[]]$KernelBytes,
-    [byte[]]$PayloadBytes
+    [byte[]]$PayloadBytes,
+    [UInt32]$BootEntryOffset,
+    [UInt32]$KernelEntryOffset
 ) {
+    if ($BootBytes.Length -gt ($BootSectors * $SectorSize)) {
+        throw "boot.bin exceeds configured boot loader read window ($BootSectors sectors)"
+    }
     if ($KernelBytes.Length -gt ($KernelSectors * $SectorSize)) {
-        throw "kernel.bin exceeds configured boot loader read window ($KernelSectors sectors)"
+        throw "kernel.bin exceeds configured kernel window ($KernelSectors sectors)"
     }
 
     $payloadSectors = [UInt32][Math]::Ceiling($PayloadBytes.Length / [double]$SectorSize)
@@ -178,10 +190,14 @@ function Write-XdvfsLayout(
     Write-Ascii $bootRecord 0 "XDVFSBR0"
     Write-UInt32Le $bootRecord 8 1
     Write-UInt32Le $bootRecord 12 $SuperblockRelLba
-    Write-UInt32Le $bootRecord 16 $KernelRelLba
-    Write-UInt32Le $bootRecord 20 $KernelSectors
+    Write-UInt32Le $bootRecord 16 $BootRelLba
+    Write-UInt32Le $bootRecord 20 $BootSectors
     Write-UInt32Le $bootRecord 24 $PreloadRelLba
     Write-UInt32Le $bootRecord 28 ([UInt32]$PayloadBytes.Length)
+    Write-UInt32Le $bootRecord 32 $KernelRelLba
+    Write-UInt32Le $bootRecord 36 $KernelSectors
+    Write-UInt32Le $bootRecord 40 $BootEntryOffset
+    Write-UInt32Le $bootRecord 44 $KernelEntryOffset
     $bootRecord[510] = 0x55
     $bootRecord[511] = 0xAA
     Set-Bytes $Image ([int64]$PartitionStartLba * $SectorSize) $bootRecord
@@ -194,13 +210,16 @@ function Write-XdvfsLayout(
     Write-UInt64Le $superblock 12 2
     Write-UInt64Le $superblock 20 $PartitionStartLba
     Write-UInt64Le $superblock 28 $PartitionSectorCount
-    Write-UInt32Le $superblock 36 $KernelRelLba
-    Write-UInt32Le $superblock 40 $KernelSectors
+    Write-UInt32Le $superblock 36 $BootRelLba
+    Write-UInt32Le $superblock 40 $BootSectors
     Write-UInt32Le $superblock 44 $PreloadRelLba
     Write-UInt32Le $superblock 48 ([UInt32]$PayloadBytes.Length)
+    Write-UInt32Le $superblock 52 $KernelRelLba
+    Write-UInt32Le $superblock 56 $KernelSectors
     Write-Ascii $superblock 64 "XDVFS-64M"
     Set-Bytes $Image ([int64]($PartitionStartLba + $SuperblockRelLba) * $SectorSize) $superblock
 
+    Set-Bytes $Image ([int64]($PartitionStartLba + $BootRelLba) * $SectorSize) $BootBytes
     Set-Bytes $Image ([int64]($PartitionStartLba + $KernelRelLba) * $SectorSize) $KernelBytes
     Set-Bytes $Image ([int64]($PartitionStartLba + $PreloadRelLba) * $SectorSize) $PayloadBytes
 }
@@ -462,8 +481,11 @@ function New-Fat16EspVolume([int]$TotalSectors, [byte[]]$EfiBinary) {
 
 function Build-MbrImage(
     [byte[]]$BootSector,
+    [byte[]]$BootBytes,
     [byte[]]$KernelBytes,
     [byte[]]$PayloadBytes,
+    [UInt32]$BootEntryOffset,
+    [UInt32]$KernelEntryOffset,
     [int]$SizeMb,
     [string]$OutDir
 ) {
@@ -478,7 +500,7 @@ function Build-MbrImage(
     Write-MbrPartitionEntry $image 0 0x80 $XdvfsPartitionType $MbrPartitionStartLba $partitionSectors
     Write-UInt16Le $image 510 0xAA55
 
-    Write-XdvfsLayout $image $MbrPartitionStartLba $partitionSectors $KernelBytes $PayloadBytes
+    Write-XdvfsLayout $image $MbrPartitionStartLba $partitionSectors $BootBytes $KernelBytes $PayloadBytes $BootEntryOffset $KernelEntryOffset
 
     $outPath = Join-Path $OutDir "xdv-os-mbr-64m.img"
     [System.IO.File]::WriteAllBytes($outPath, $image)
@@ -488,8 +510,11 @@ function Build-MbrImage(
 
 function Build-UefiImage(
     [byte[]]$BootSector,
+    [byte[]]$BootBytes,
     [byte[]]$KernelBytes,
     [byte[]]$PayloadBytes,
+    [UInt32]$BootEntryOffset,
+    [UInt32]$KernelEntryOffset,
     [int]$SizeMb,
     [string]$OutDir
 ) {
@@ -533,7 +558,7 @@ function Build-UefiImage(
     $espVolume = New-Fat16EspVolume ([int]$espSectors) $efiBinary
     Set-Bytes $image ([int64]$espStartLba * $SectorSize) $espVolume
 
-    Write-XdvfsLayout $image ([UInt32]$xdvfsStartLba) ([UInt32]$xdvfsSectors) $KernelBytes $PayloadBytes
+    Write-XdvfsLayout $image ([UInt32]$xdvfsStartLba) ([UInt32]$xdvfsSectors) $BootBytes $KernelBytes $PayloadBytes $BootEntryOffset $KernelEntryOffset
 
     $outPath = Join-Path $OutDir "xdv-os-uefi-64m.img"
     [System.IO.File]::WriteAllBytes($outPath, $image)
@@ -542,6 +567,9 @@ function Build-UefiImage(
 
 if (-not (Test-Path $BootSectorPath)) {
     throw "Missing boot sector: $BootSectorPath"
+}
+if (-not (Test-Path $BootPath)) {
+    throw "Missing boot binary: $BootPath"
 }
 if (-not (Test-Path $KernelPath)) {
     throw "Missing kernel binary: $KernelPath"
@@ -554,11 +582,12 @@ $bootSector = [System.IO.File]::ReadAllBytes((Resolve-Path $BootSectorPath))
 if ($bootSector.Length -ne 512) {
     throw "boot_sector.bin must be exactly 512 bytes"
 }
+$bootBytes = [System.IO.File]::ReadAllBytes((Resolve-Path $BootPath))
 $kernelBytes = [System.IO.File]::ReadAllBytes((Resolve-Path $KernelPath))
 $preloadPayload = New-PreloadPayload $RepoRoot $ImageSizeMB
 
-$mbrImage = Build-MbrImage $bootSector $kernelBytes $preloadPayload $ImageSizeMB $OutputDir
-$uefiImage = Build-UefiImage $bootSector $kernelBytes $preloadPayload $ImageSizeMB $OutputDir
+$mbrImage = Build-MbrImage $bootSector $bootBytes $kernelBytes $preloadPayload $BootEntryOffset $KernelEntryOffset $ImageSizeMB $OutputDir
+$uefiImage = Build-UefiImage $bootSector $bootBytes $kernelBytes $preloadPayload $BootEntryOffset $KernelEntryOffset $ImageSizeMB $OutputDir
 
 Write-Host "Generated images:"
 Write-Host "  - $mbrImage"

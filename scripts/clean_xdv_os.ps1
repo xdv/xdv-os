@@ -59,6 +59,7 @@ $wildcardFilePatterns = @(
 
 $exactFileNames = @(
     "boot_sector.bin",
+    "boot.bin",
     "kernel.bin"
 )
 
