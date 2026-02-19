@@ -85,7 +85,7 @@ function Get-RepoRelativePath([string]$RootPath, [string]$Path) {
     return $pathResolved
 }
 
-function New-PreloadPayload([string]$RepoRootPath, [int]$SizeMb) {
+function New-PreloadPayload([string]$RepoRootPath, [int]$SizeMb, [byte[]]$KernelPayloadBytes) {
     $entries = New-Object System.Collections.Generic.List[object]
     $payloadRoots = @(
         "xdv-os\src",
@@ -99,6 +99,7 @@ XDV preload manifest
 image-size-mb=$SizeMb
 boot-bin-rel-lba=$BootRelLba
 kernel-bin-rel-lba=$KernelRelLba
+kernel-path=/console/kernel.bin
 packages=xdv-os,xdv-core,xdv-edx,xdv-shell
 boot-chain=xdv-boot->xdv-kernel->xdv-shell
 shell-prompt=#:
@@ -108,6 +109,10 @@ commands=cd ls cat mkdir rm echo ps help exit edx
     $entries.Add([PSCustomObject]@{
         Path = "xdv/preload.manifest"
         Data = $manifestBytes
+    })
+    $entries.Add([PSCustomObject]@{
+        Path = "console/kernel.bin"
+        Data = $KernelPayloadBytes
     })
 
     foreach ($rootRel in $payloadRoots) {
@@ -584,7 +589,7 @@ if ($bootSector.Length -ne 512) {
 }
 $bootBytes = [System.IO.File]::ReadAllBytes((Resolve-Path $BootPath))
 $kernelBytes = [System.IO.File]::ReadAllBytes((Resolve-Path $KernelPath))
-$preloadPayload = New-PreloadPayload $RepoRoot $ImageSizeMB
+$preloadPayload = New-PreloadPayload $RepoRoot $ImageSizeMB $kernelBytes
 
 $mbrImage = Build-MbrImage $bootSector $bootBytes $kernelBytes $preloadPayload $BootEntryOffset $KernelEntryOffset $ImageSizeMB $OutputDir
 $uefiImage = Build-UefiImage $bootSector $bootBytes $kernelBytes $preloadPayload $BootEntryOffset $KernelEntryOffset $ImageSizeMB $OutputDir

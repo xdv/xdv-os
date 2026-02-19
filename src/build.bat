@@ -44,6 +44,9 @@ set "OS_BOOT_CONTRACT_SRC=%~dp0xdv_os_boot_contract.ds"
 set "BOOT_SRC=%REPO_ROOT%\xdv-boot\src\boot.ds"
 set "BOOT_PROFILE_SRC=%REPO_ROOT%\xdv-boot\src\boot_loader_profile.ds"
 set "BOOT_SPLASH_PROFILE_SRC=%REPO_ROOT%\xdv-boot\src\boot_splash_profile.ds"
+set "XDV_LIB_MAIN_SRC=%REPO_ROOT%\xdv-lib\sector\xdv_lib\lib.ds"
+set "XDV_LIB_BOOT_RUNTIME_SRC=%REPO_ROOT%\xdv-lib\sector\xdv_lib\boot_runtime.ds"
+set "XDV_LIB_BOOT_RUNTIME_ASM=%REPO_ROOT%\xdv-lib\asm\xdv_lib_boot_runtime.asm"
 set "SHELL_BOOT_UNITS_SRC=%REPO_ROOT%\xdv-shell\src\shell_boot_units.ds"
 set "SHELL_BRIDGE_SRC=%REPO_ROOT%\xdv-shell\src\shell_bridge.ds"
 set "KERNEL_SRC=%REPO_ROOT%\xdv-kernel\sector\xdv_kernel\src\kernel.ds"
@@ -52,6 +55,7 @@ set "BOOT_COMBINED_SRC=%~dp0target\xdv_os_boot_bundle.ds"
 set "KERNEL_COMBINED_SRC=%~dp0target\xdv_os_kernel_bundle.ds"
 set "BOOT_OBJ_STAGE_DIR=%~dp0target\dust\obj_stage_boot"
 set "KERNEL_OBJ_STAGE_DIR=%~dp0target\dust\obj_stage_kernel"
+set "XDV_LIB_BOOT_RUNTIME_OBJ=%~dp0target\dust\xdv_lib_boot_runtime.o"
 set "BOOT_MAP_PATH=%~dp0target\dust\boot.map"
 set "KERNEL_MAP_PATH=%~dp0target\dust\kernel.map"
 set "BOOT_ENTRY_OFFSET="
@@ -64,7 +68,7 @@ set "SYNC_VDI_SCRIPT=%OS_ROOT%\scripts\sync_vdi.ps1"
 set "DUSTLINK_CMD=%REPO_ROOT%\dustlink\target\release\dustlink.exe"
 set "BOOT_ENTRY_SYMBOL=XdvBoot::boot_main"
 set "KERNEL_ENTRY_SYMBOL=XdvKernel::kernel_start"
-set "BOOT_LINK_ENTRY=boot_main"
+set "BOOT_LINK_ENTRY=xdv_lib_boot_main"
 set "KERNEL_LINK_ENTRY=kernel_start"
 
 echo === XDV OS Build (Dust compiler + DPL) ===
@@ -140,6 +144,8 @@ call :check_file "%BOOT_SRC%" || exit /b 1
 call :check_file "%OS_BOOT_CONTRACT_SRC%" || exit /b 1
 call :check_file "%BOOT_PROFILE_SRC%" || exit /b 1
 call :check_file "%BOOT_SPLASH_PROFILE_SRC%" || exit /b 1
+call :check_file "%XDV_LIB_MAIN_SRC%" || exit /b 1
+call :check_file "%XDV_LIB_BOOT_RUNTIME_SRC%" || exit /b 1
 call :check_file "%REPO_ROOT%\xdv-boot\src\boot_mbr.ds" || exit /b 1
 call :check_file "%REPO_ROOT%\xdv-boot\src\boot_uefi.ds" || exit /b 1
 call :check_file "%REPO_ROOT%\xdv-boot\src\boot_stage1.ds" || exit /b 1
@@ -181,6 +187,10 @@ call :check_file "%REPO_ROOT%\xdv-xdvfs-utils\src\xdvfs_utils_mount.ds" || exit 
 call :check_file "%REPO_ROOT%\xdv-xdvfs-utils\src\xdvfs_utils_space.ds" || exit /b 1
 call :check_file "%REPO_ROOT%\xdv-xdvfs-utils\src\xdvfs_utils_perm.ds" || exit /b 1
 call :check_file "%REPO_ROOT%\xdv-xdvfs-utils\src\xdvfs_utils_cli.ds" || exit /b 1
+if not exist "%XDV_LIB_BOOT_RUNTIME_ASM%" (
+    echo ERROR: missing required file: %XDV_LIB_BOOT_RUNTIME_ASM%
+    exit /b 1
+)
 
 echo [2/7] Composing Dust boot/kernel source bundles...
 if not exist "%~dp0target" mkdir "%~dp0target"
@@ -208,6 +218,10 @@ if not exist "%~dp0target" mkdir "%~dp0target"
     type "%REPO_ROOT%\xdv-boot\src\boot_kernel_load.ds"
     echo.
     type "%REPO_ROOT%\xdv-boot\src\boot_stage1.ds"
+    echo.
+    type "%XDV_LIB_MAIN_SRC%"
+    echo.
+    type "%XDV_LIB_BOOT_RUNTIME_SRC%"
 ) > "%BOOT_COMBINED_SRC%"
 if %ERRORLEVEL% neq 0 (
     echo ERROR: Failed to compose xdv-boot source bundle
@@ -223,6 +237,10 @@ if %ERRORLEVEL% neq 0 (
     type "%SHELL_BRIDGE_SRC%"
     echo.
     type "%KERNEL_SRC%"
+    echo.
+    type "%XDV_LIB_MAIN_SRC%"
+    echo.
+    type "%XDV_LIB_BOOT_RUNTIME_SRC%"
 ) > "%KERNEL_COMBINED_SRC%"
 if %ERRORLEVEL% neq 0 (
     echo ERROR: Failed to compose xdv-os/xdv-boot/xdv-runtime/xdv-shell/xdv-kernel source bundle
@@ -261,12 +279,19 @@ if %ERRORLEVEL% neq 0 (
     echo ERROR: NASM not found. Install from https://www.nasm.us/
     exit /b 1
 )
+if not exist "%~dp0target\dust" mkdir "%~dp0target\dust"
+nasm -f elf64 "%XDV_LIB_BOOT_RUNTIME_ASM%" -o "%XDV_LIB_BOOT_RUNTIME_OBJ%"
+if %ERRORLEVEL% neq 0 (
+    echo ERROR: NASM failed while assembling xdv-lib boot runtime object.
+    exit /b 1
+)
 
 echo [5/7] Linking boot.bin via dustlink...
 set "BOOT_LINK_OBJECTS="
 for %%F in ("%BOOT_OBJ_STAGE_DIR%\*.o") do (
     set "BOOT_LINK_OBJECTS=!BOOT_LINK_OBJECTS! "%%~fF""
 )
+set "BOOT_LINK_OBJECTS=!BOOT_LINK_OBJECTS! "%XDV_LIB_BOOT_RUNTIME_OBJ%""
 echo   [boot-link] frontend: %DUSTLINK_CMD%
 "%DUSTLINK_CMD%" -m elf_x86_64 -nostdlib --oformat=binary --image-base 0x10000 -Ttext 0x10000 -Map "%BOOT_MAP_PATH%" -e %BOOT_LINK_ENTRY% -o "%BOOT_BIN_PATH%" !BOOT_LINK_OBJECTS!
 if %ERRORLEVEL% neq 0 (
@@ -274,7 +299,7 @@ if %ERRORLEVEL% neq 0 (
     exit /b 1
 )
 set "BOOT_ENTRY_HEX="
-for /f "tokens=1" %%I in ('findstr /r /c:"[ ]boot_main" "%BOOT_MAP_PATH%"') do set "BOOT_ENTRY_HEX=%%I"
+for /f "usebackq delims=" %%I in (`powershell -NoProfile -Command "$m = Select-String -Path '%BOOT_MAP_PATH%' -Pattern '\s%BOOT_LINK_ENTRY%(\s|$)' | Select-Object -First 1; if ($m) { ($m.Line.Trim() -split '\s+')[0] }"`) do set "BOOT_ENTRY_HEX=%%I"
 if not defined BOOT_ENTRY_HEX (
     echo ERROR: Failed to resolve boot entry offset from %BOOT_MAP_PATH%
     exit /b 1
@@ -294,7 +319,7 @@ if %ERRORLEVEL% neq 0 (
     exit /b 1
 )
 set "KERNEL_ENTRY_HEX="
-for /f "tokens=1" %%I in ('findstr /r /c:"[ ]kernel_start" "%KERNEL_MAP_PATH%"') do set "KERNEL_ENTRY_HEX=%%I"
+for /f "usebackq delims=" %%I in (`powershell -NoProfile -Command "$m = Select-String -Path '%KERNEL_MAP_PATH%' -Pattern '\s%KERNEL_LINK_ENTRY%(\s|$)' | Select-Object -First 1; if ($m) { ($m.Line.Trim() -split '\s+')[0] }"`) do set "KERNEL_ENTRY_HEX=%%I"
 if not defined KERNEL_ENTRY_HEX (
     echo ERROR: Failed to resolve kernel entry offset from %KERNEL_MAP_PATH%
     exit /b 1

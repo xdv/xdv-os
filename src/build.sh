@@ -26,6 +26,9 @@ OS_BOOT_CONTRACT_SRC="$SCRIPT_DIR/xdv_os_boot_contract.ds"
 BOOT_SRC="$REPO_ROOT/xdv-boot/src/boot.ds"
 BOOT_PROFILE_SRC="$REPO_ROOT/xdv-boot/src/boot_loader_profile.ds"
 BOOT_SPLASH_PROFILE_SRC="$REPO_ROOT/xdv-boot/src/boot_splash_profile.ds"
+XDV_LIB_MAIN_SRC="$REPO_ROOT/xdv-lib/sector/xdv_lib/lib.ds"
+XDV_LIB_BOOT_RUNTIME_SRC="$REPO_ROOT/xdv-lib/sector/xdv_lib/boot_runtime.ds"
+XDV_LIB_BOOT_RUNTIME_ASM="$REPO_ROOT/xdv-lib/asm/xdv_lib_boot_runtime.asm"
 SHELL_BOOT_UNITS_SRC="$REPO_ROOT/xdv-shell/src/shell_boot_units.ds"
 SHELL_BRIDGE_SRC="$REPO_ROOT/xdv-shell/src/shell_bridge.ds"
 KERNEL_SRC="$REPO_ROOT/xdv-kernel/sector/xdv_kernel/src/kernel.ds"
@@ -34,6 +37,7 @@ BOOT_COMBINED_SRC="$SCRIPT_DIR/target/xdv_os_boot_bundle.ds"
 KERNEL_COMBINED_SRC="$SCRIPT_DIR/target/xdv_os_kernel_bundle.ds"
 BOOT_OBJ_STAGE_DIR="$SCRIPT_DIR/target/dust/obj_stage_boot"
 KERNEL_OBJ_STAGE_DIR="$SCRIPT_DIR/target/dust/obj_stage_kernel"
+XDV_LIB_BOOT_RUNTIME_OBJ="$SCRIPT_DIR/target/dust/xdv_lib_boot_runtime.o"
 BOOT_MAP_PATH="$SCRIPT_DIR/target/dust/boot.map"
 KERNEL_MAP_PATH="$SCRIPT_DIR/target/dust/kernel.map"
 BOOT_ENTRY_OFFSET=0
@@ -43,7 +47,7 @@ KERNEL_BIN_PATH="kernel.bin"
 DUSTLINK_CMD="$REPO_ROOT/dustlink/target/release/dustlink"
 BOOT_ENTRY_SYMBOL="XdvBoot::boot_main"
 KERNEL_ENTRY_SYMBOL="XdvKernel::kernel_start"
-BOOT_LINK_ENTRY="boot_main"
+BOOT_LINK_ENTRY="xdv_lib_boot_main"
 KERNEL_LINK_ENTRY="kernel_start"
 if [ -f "$REPO_ROOT/dustlink/target/release/dustlink.exe" ]; then
     DUSTLINK_CMD="$REPO_ROOT/dustlink/target/release/dustlink.exe"
@@ -123,6 +127,8 @@ CHECK_TARGETS=(
     "$OS_BOOT_CONTRACT_SRC"
     "$BOOT_PROFILE_SRC"
     "$BOOT_SPLASH_PROFILE_SRC"
+    "$XDV_LIB_MAIN_SRC"
+    "$XDV_LIB_BOOT_RUNTIME_SRC"
     "$REPO_ROOT/xdv-boot/src/boot_mbr.ds"
     "$REPO_ROOT/xdv-boot/src/boot_uefi.ds"
     "$REPO_ROOT/xdv-boot/src/boot_stage1.ds"
@@ -174,6 +180,10 @@ for file in "${CHECK_TARGETS[@]}"; do
     echo "  - $(realpath --relative-to="$REPO_ROOT" "$file" 2>/dev/null || echo "$file")"
     "$DUST_CMD" check "$file" >/dev/null
 done
+if [ ! -f "$XDV_LIB_BOOT_RUNTIME_ASM" ]; then
+    echo "ERROR: missing required file: $XDV_LIB_BOOT_RUNTIME_ASM"
+    exit 1
+fi
 
 echo "[2/7] Composing Dust boot/kernel source bundles..."
 cd "$SCRIPT_DIR"
@@ -190,13 +200,17 @@ cat \
     "$REPO_ROOT/xdv-boot/src/boot_mbr.ds" \
     "$REPO_ROOT/xdv-boot/src/boot_uefi.ds" \
     "$REPO_ROOT/xdv-boot/src/boot_kernel_load.ds" \
-    "$REPO_ROOT/xdv-boot/src/boot_stage1.ds" > "$BOOT_COMBINED_SRC"
+    "$REPO_ROOT/xdv-boot/src/boot_stage1.ds" \
+    "$XDV_LIB_MAIN_SRC" \
+    "$XDV_LIB_BOOT_RUNTIME_SRC" > "$BOOT_COMBINED_SRC"
 cat \
     "$OS_BOOT_CONTRACT_SRC" \
     "$RUNTIME_BRIDGE_SRC" \
     "$SHELL_BOOT_UNITS_SRC" \
     "$SHELL_BRIDGE_SRC" \
-    "$KERNEL_SRC" > "$KERNEL_COMBINED_SRC"
+    "$KERNEL_SRC" \
+    "$XDV_LIB_MAIN_SRC" \
+    "$XDV_LIB_BOOT_RUNTIME_SRC" > "$KERNEL_COMBINED_SRC"
 
 echo "[3/7] Compiling boot object set via Dust obj..."
 "$DUST_CMD" obj \
@@ -221,10 +235,13 @@ if ! command -v nasm >/dev/null 2>&1; then
     echo "ERROR: NASM required. Install with: sudo apt install nasm"
     exit 1
 fi
+mkdir -p "$SCRIPT_DIR/target/dust"
+nasm -f elf64 "$XDV_LIB_BOOT_RUNTIME_ASM" -o "$XDV_LIB_BOOT_RUNTIME_OBJ"
 
 echo "[5/7] Linking boot.bin via dustlink..."
 shopt -s nullglob
 boot_objs=("$BOOT_OBJ_STAGE_DIR"/*.o)
+boot_objs+=("$XDV_LIB_BOOT_RUNTIME_OBJ")
 if [ ${#boot_objs[@]} -eq 0 ]; then
     echo "ERROR: no boot objects found in $BOOT_OBJ_STAGE_DIR"
     exit 1
@@ -240,7 +257,7 @@ echo "  [boot-link] frontend: $DUSTLINK_CMD"
     -e "$BOOT_LINK_ENTRY" \
     -o "$BOOT_BIN_PATH" \
     "${boot_objs[@]}"
-boot_entry_hex="$(awk '/[[:space:]]boot_main$/ {print $1; exit}' "$BOOT_MAP_PATH")"
+boot_entry_hex="$(awk -v sym="$BOOT_LINK_ENTRY" '$0 ~ ("[[:space:]]" sym "$") {print $1; exit}' "$BOOT_MAP_PATH")"
 if [ -z "$boot_entry_hex" ]; then
     echo "ERROR: Failed to resolve boot entry offset from $BOOT_MAP_PATH"
     exit 1

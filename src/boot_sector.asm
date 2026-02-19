@@ -1,7 +1,7 @@
 ; XDV OS boot sector stage-0 (MBR, partition-aware).
-; Stage-0 reads the xdvfs boot record, preloads boot/kernel images, then transfers control.
-; Strict contract: stage-0 MUST NOT directly call kernel entry.
-; boot.bin performs the final kernel handoff (boot.bin-driven transfer).
+; Stage-0 reads the xdvfs boot record, loads boot.bin, then transfers control.
+; Strict contract: stage-0 MUST NOT preload or call kernel.bin.
+; boot.bin performs the final kernel load + handoff.
 
 [ORG 0x7C00]
 [BITS 16]
@@ -10,8 +10,6 @@ BOOTREC_BUFFER_SEG equ 0x0000
 BOOTREC_BUFFER_OFF equ 0x0600
 BOOT_LOAD_SEG equ 0x1000
 BOOT_LOAD_OFF equ 0x0000
-KERNEL_LOAD_SEG equ 0x2000
-KERNEL_LOAD_OFF equ 0x0000
 BOOT_STAGE_ADDR equ 0x00010000
 PAGE_TABLE_PML4 equ 0x00009000
 PAGE_TABLE_PDPT equ 0x0000A000
@@ -51,10 +49,9 @@ start:
     ; +16 boot.bin relative LBA
     ; +20 boot.bin sectors
     ; +40 boot.bin entry offset from image base (0x00010000)
-    ; +32 kernel.bin relative LBA
-    ; +36 kernel.bin sectors
+    ; +32 /console/kernel.bin relative LBA (for boot.bin runtime use)
+    ; +36 /console/kernel.bin sectors (for boot.bin runtime use)
     ; +44 kernel.bin entry offset from image base (0x00020000)
-    ; (kernel metadata is preserved in boot record for boot.bin consumption)
     mov si, BOOTREC_BUFFER_OFF
     mov eax, [si + 16]
     add eax, [partition_start_lba]
@@ -63,23 +60,6 @@ start:
     mov [dap_count], ax
     mov word [dap_offset], BOOT_LOAD_OFF
     mov word [dap_segment], BOOT_LOAD_SEG
-
-    mov si, disk_address_packet
-    mov dl, [boot_drive]
-    mov ah, 0x42
-    int 0x13
-    jc disk_error
-
-    ; Preload kernel.bin image into 0x00020000.
-    ; boot.bin owns the final jump/handoff to this preloaded image.
-    mov si, BOOTREC_BUFFER_OFF
-    mov eax, [si + 32]
-    add eax, [partition_start_lba]
-    mov [dap_lba_low], eax
-    mov ax, [si + 36]
-    mov [dap_count], ax
-    mov word [dap_offset], KERNEL_LOAD_OFF
-    mov word [dap_segment], KERNEL_LOAD_SEG
 
     mov si, disk_address_packet
     mov dl, [boot_drive]
