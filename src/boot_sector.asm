@@ -1,7 +1,7 @@
 ; XDV OS boot sector stage-0 (MBR, partition-aware).
-; Reads the xdvfs boot record from the boot partition and loads boot.bin only.
-; boot.bin performs splash -> kernel discovery -> kernel handoff.
-; This stage is transport only.
+; Stage-0 reads the xdvfs boot record, preloads boot/kernel images, then transfers control.
+; Strict contract: stage-0 MUST NOT directly call kernel entry.
+; boot.bin performs the final kernel handoff (boot.bin-driven transfer).
 
 [ORG 0x7C00]
 [BITS 16]
@@ -13,7 +13,6 @@ BOOT_LOAD_OFF equ 0x0000
 KERNEL_LOAD_SEG equ 0x2000
 KERNEL_LOAD_OFF equ 0x0000
 BOOT_STAGE_ADDR equ 0x00010000
-KERNEL_STAGE_ADDR equ 0x00020000
 PAGE_TABLE_PML4 equ 0x00009000
 PAGE_TABLE_PDPT equ 0x0000A000
 PAGE_TABLE_PD   equ 0x0000B000
@@ -55,6 +54,7 @@ start:
     ; +32 kernel.bin relative LBA
     ; +36 kernel.bin sectors
     ; +44 kernel.bin entry offset from image base (0x00020000)
+    ; (kernel metadata is preserved in boot record for boot.bin consumption)
     mov si, BOOTREC_BUFFER_OFF
     mov eax, [si + 16]
     add eax, [partition_start_lba]
@@ -70,7 +70,8 @@ start:
     int 0x13
     jc disk_error
 
-    ; Preload kernel.bin so stage-0 can handoff even if boot.bin returns.
+    ; Preload kernel.bin image into 0x00020000.
+    ; boot.bin owns the final jump/handoff to this preloaded image.
     mov si, BOOTREC_BUFFER_OFF
     mov eax, [si + 32]
     add eax, [partition_start_lba]
@@ -178,10 +179,6 @@ long_mode_entry:
     mov rsp, 0x90000
     mov eax, [BOOTREC_BUFFER_OFF + 40]
     add eax, BOOT_STAGE_ADDR
-    call rax
-
-    mov eax, [BOOTREC_BUFFER_OFF + 44]
-    add eax, KERNEL_STAGE_ADDR
     call rax
 
 .hang:
