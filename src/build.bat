@@ -5,9 +5,8 @@ REM - validates one compileable integration entry per required subsystem
 REM - compiles GCC-style object sets with dust obj for boot and kernel sources
 REM - links boot.bin with dustlink from xdv-boot object set
 REM - links kernel.bin with dustlink from xdv-kernel + xdv-runtime + xdv-xdvfs object set
-REM - composes a Dust boot-chain bundle for traceability:
+REM - composes a Dust kernel-chain bundle for traceability:
 REM   xdv-os/src/xdv_os_boot_contract.ds
-REM   + xdv-boot/src/boot_loader_profile.ds
 REM   + xdv-runtime/src/runtime_bridge.ds
 REM   + xdv-shell/src/shell_boot_units.ds
 REM   + xdv-shell/src/shell_bridge.ds
@@ -42,12 +41,14 @@ set "OS_ROOT=%~dp0.."
 set "REPO_ROOT=%~dp0..\.."
 set "CLEAN_SCRIPT=%OS_ROOT%\scripts\clean_xdv_os.ps1"
 set "OS_BOOT_CONTRACT_SRC=%~dp0xdv_os_boot_contract.ds"
+set "BOOT_SRC=%REPO_ROOT%\xdv-boot\src\boot.ds"
 set "BOOT_PROFILE_SRC=%REPO_ROOT%\xdv-boot\src\boot_loader_profile.ds"
 set "BOOT_SPLASH_PROFILE_SRC=%REPO_ROOT%\xdv-boot\src\boot_splash_profile.ds"
 set "SHELL_BOOT_UNITS_SRC=%REPO_ROOT%\xdv-shell\src\shell_boot_units.ds"
 set "SHELL_BRIDGE_SRC=%REPO_ROOT%\xdv-shell\src\shell_bridge.ds"
 set "KERNEL_SRC=%REPO_ROOT%\xdv-kernel\sector\xdv_kernel\src\kernel.ds"
 set "RUNTIME_BRIDGE_SRC=%REPO_ROOT%\xdv-runtime\src\runtime_bridge.ds"
+set "BOOT_COMBINED_SRC=%~dp0target\xdv_os_boot_bundle.ds"
 set "KERNEL_COMBINED_SRC=%~dp0target\xdv_os_kernel_bundle.ds"
 set "BOOT_OBJ_STAGE_DIR=%~dp0target\dust\obj_stage_boot"
 set "KERNEL_OBJ_STAGE_DIR=%~dp0target\dust\obj_stage_kernel"
@@ -57,10 +58,13 @@ set "BOOT_ENTRY_OFFSET="
 set "KERNEL_ENTRY_OFFSET="
 set "BOOT_BIN_PATH=boot.bin"
 set "KERNEL_BIN_PATH=kernel.bin"
+set "MBR_IMAGE_PATH=%~dp0xdv-os-mbr-64m.img"
+set "MBR_VDI_PATH=%~dp0xdv-os-mbr-64m.vdi"
+set "SYNC_VDI_SCRIPT=%OS_ROOT%\scripts\sync_vdi.ps1"
 set "DUSTLINK_CMD=%REPO_ROOT%\dustlink\target\release\dustlink.exe"
-set "BOOT_ENTRY_SYMBOL=XdvOsBootContract::boot_splash_contract"
+set "BOOT_ENTRY_SYMBOL=boot_main"
 set "KERNEL_ENTRY_SYMBOL=XdvKernel::kernel_start"
-set "BOOT_LINK_ENTRY=boot_splash_contract"
+set "BOOT_LINK_ENTRY=boot_main"
 set "KERNEL_LINK_ENTRY=kernel_start"
 
 echo === XDV OS Build (Dust compiler + DPL) ===
@@ -132,6 +136,7 @@ if not exist "%DUSTLINK_CMD%" (
 )
 
 echo [1/7] Validating required subsystem entrypoints...
+call :check_file "%BOOT_SRC%" || exit /b 1
 call :check_file "%OS_BOOT_CONTRACT_SRC%" || exit /b 1
 call :check_file "%BOOT_PROFILE_SRC%" || exit /b 1
 call :check_file "%BOOT_SPLASH_PROFILE_SRC%" || exit /b 1
@@ -177,14 +182,39 @@ call :check_file "%REPO_ROOT%\xdv-xdvfs-utils\src\xdvfs_utils_space.ds" || exit 
 call :check_file "%REPO_ROOT%\xdv-xdvfs-utils\src\xdvfs_utils_perm.ds" || exit /b 1
 call :check_file "%REPO_ROOT%\xdv-xdvfs-utils\src\xdvfs_utils_cli.ds" || exit /b 1
 
-echo [2/7] Composing Dust boot chain bundle...
+echo [2/7] Composing Dust boot/kernel source bundles...
 if not exist "%~dp0target" mkdir "%~dp0target"
 (
-    type "%OS_BOOT_CONTRACT_SRC%"
+    type "%BOOT_SRC%"
+    echo.
+    type "%BOOT_SPLASH_PROFILE_SRC%"
     echo.
     type "%BOOT_PROFILE_SRC%"
     echo.
-    type "%BOOT_SPLASH_PROFILE_SRC%"
+    type "%REPO_ROOT%\xdv-boot\src\boot_disk.ds"
+    echo.
+    type "%REPO_ROOT%\xdv-boot\src\boot_gdt.ds"
+    echo.
+    type "%REPO_ROOT%\xdv-boot\src\boot_idt.ds"
+    echo.
+    type "%REPO_ROOT%\xdv-boot\src\boot_paging.ds"
+    echo.
+    type "%REPO_ROOT%\xdv-boot\src\boot_xdvfs_mount.ds"
+    echo.
+    type "%REPO_ROOT%\xdv-boot\src\boot_mbr.ds"
+    echo.
+    type "%REPO_ROOT%\xdv-boot\src\boot_uefi.ds"
+    echo.
+    type "%REPO_ROOT%\xdv-boot\src\boot_kernel_load.ds"
+    echo.
+    type "%REPO_ROOT%\xdv-boot\src\boot_stage1.ds"
+) > "%BOOT_COMBINED_SRC%"
+if %ERRORLEVEL% neq 0 (
+    echo ERROR: Failed to compose xdv-boot source bundle
+    exit /b 1
+)
+(
+    type "%OS_BOOT_CONTRACT_SRC%"
     echo.
     type "%RUNTIME_BRIDGE_SRC%"
     echo.
@@ -201,8 +231,7 @@ if %ERRORLEVEL% neq 0 (
 
 echo [3/7] Compiling boot object set via Dust obj...
 "%DUST_CMD%" obj ^
-  "%OS_BOOT_CONTRACT_SRC%" ^
-  "%REPO_ROOT%\xdv-boot\src" ^
+  "%BOOT_COMBINED_SRC%" ^
   --out-dir "%BOOT_OBJ_STAGE_DIR%" ^
   --target "x86_64-pc-none-elf" ^
   --entry "%BOOT_ENTRY_SYMBOL%" ^
@@ -245,7 +274,7 @@ if %ERRORLEVEL% neq 0 (
     exit /b 1
 )
 set "BOOT_ENTRY_HEX="
-for /f "tokens=1" %%I in ('findstr /r /c:"[ ]boot_splash_contract" "%BOOT_MAP_PATH%"') do set "BOOT_ENTRY_HEX=%%I"
+for /f "tokens=1" %%I in ('findstr /r /c:"[ ]boot_main" "%BOOT_MAP_PATH%"') do set "BOOT_ENTRY_HEX=%%I"
 if not defined BOOT_ENTRY_HEX (
     echo ERROR: Failed to resolve boot entry offset from %BOOT_MAP_PATH%
     exit /b 1
@@ -278,7 +307,7 @@ if %ERRORLEVEL% neq 0 (
     exit /b 1
 )
 
-echo [7/7] Creating 64MB partitioned images...
+echo [7/8] Creating 64MB partitioned images...
 powershell -NoProfile -ExecutionPolicy Bypass -File build_images.ps1 ^
   -BootSectorPath "boot_sector.bin" ^
   -BootPath "%BOOT_BIN_PATH%" ^
@@ -293,11 +322,22 @@ if %ERRORLEVEL% neq 0 (
     exit /b 1
 )
 
+echo [8/8] Syncing VirtualBox VDI from MBR image...
+if exist "%SYNC_VDI_SCRIPT%" (
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%SYNC_VDI_SCRIPT%" -RawImagePath "%MBR_IMAGE_PATH%" -VdiPath "%MBR_VDI_PATH%"
+    if !ERRORLEVEL! neq 0 (
+        echo WARNING: VDI sync failed; raw images are still available.
+    )
+) else (
+    echo   VDI sync script missing; skipping.
+)
+
 echo.
 echo === Build complete ===
 echo   Output (MBR):  %~dp0xdv-os-mbr-64m.img
 echo   Output (UEFI): %~dp0xdv-os-uefi-64m.img
 echo   Alias:         %~dp0xdv-os.img
+echo   Output (VDI):  %~dp0xdv-os-mbr-64m.vdi
 echo   VirtualBox BIOS: attach xdv-os-mbr-64m.img (or xdv-os.img)
 echo   VirtualBox UEFI: enable EFI and attach xdv-os-uefi-64m.img
 echo.

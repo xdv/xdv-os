@@ -1,5 +1,5 @@
              VMA              LMA     Size Align Out     In      Symbol
-           20000            20000     2ebb     1 .text
+           20000            20000     395b     1 .text
            20000            20000        b     1         D:\code\dustlang\xdv-os\src\target\dust\obj_stage_kernel\xdvfs_block_alloc_d42764907a921104.o:(.text)
            20000            20000        b     1                 allocate_block
            2000b            2000b        b     1         D:\code\dustlang\xdv-os\src\target\dust\obj_stage_kernel\xdvfs_directory_a27e74197d9285fe.o:(.text)
@@ -24,57 +24,44 @@
            2038e            2038e        b     1                 device_exists
            20399            20399        b     1         D:\code\dustlang\xdv-os\src\target\dust\obj_stage_kernel\xdvfs_superblock_c9c3627905f8f1d2.o:(.text)
            20399            20399        b     1                 create_superblock
-           203a4            203a4     2b17     1         D:\code\dustlang\xdv-os\src\target\dust\obj_stage_kernel\xdv_os_kernel_bundle_1f9f3f39583e58c0.o:(.text)
-           203a4            203a4     2b17     1                 kernel_start
-           22ebb            22ebb      440     1 .data
-           22ebb            22ebb       19     1         D:\code\dustlang\xdv-os\src\target\dust\obj_stage_kernel\xdvfs_format_d7160525ea35ac25.o:(.data)
-           22ebb            22ebb       19     1                 __dust_str_0
-           22ed4            22ed4       16     1         D:\code\dustlang\xdv-os\src\target\dust\obj_stage_kernel\xdvfs_mount_45fa4a6e5d9cf8bf.o:(.data)
-           22ed4            22ed4       16     1                 __dust_str_0
-           22eea            22eea      411     1         D:\code\dustlang\xdv-os\src\target\dust\obj_stage_kernel\xdv_os_kernel_bundle_1f9f3f39583e58c0.o:(.data)
-           22eea            22eea       17     1                 __dust_str_0
-           22f01            22f01        1     1                 __dust_str_1
-           22f02            22f02        1     1                 __dust_str_2
-           22f03            22f03        1     1                 __dust_str_3
-           22f04            22f04        1     1                 __dust_str_4
-           22f05            22f05        1     1                 __dust_str_5
-           22f06            22f06        1     1                 __dust_str_6
-           22f07            22f07        1     1                 __dust_str_7
-           22f08            22f08        1     1                 __dust_str_8
-           22f09            22f09       2f     1                 __dust_str_9
-           22f38            22f38       2f     1                 __dust_str_10
-           22f67            22f67       2f     1                 __dust_str_11
-           22f96            22f96       2f     1                 __dust_str_12
-           22fc5            22fc5       2f     1                 __dust_str_13
-           22ff4            22ff4       24     1                 __dust_str_14
-           23018            23018       1f     1                 __dust_str_15
-           23037            23037       17     1                 __dust_str_16
-           2304e            2304e       24     1                 __dust_str_17
-           23072            23072       17     1                 __dust_str_18
-           23089            23089       20     1                 __dust_str_19
-           230a9            230a9       1a     1                 __dust_str_20
-           230c3            230c3       21     1                 __dust_str_21
-           230e4            230e4       26     1                 __dust_str_22
-           2310a            2310a       33     1                 __dust_str_23
-           2313d            2313d       32     1                 __dust_str_24
-           2316f            2316f       40     1                 __dust_str_25
-           231af            231af       18     1                 __dust_str_26
-           231c7            231c7       1f     1                 __dust_str_27
-           231e6            231e6       1d     1                 __dust_str_28
-           23203            23203       18     1                 __dust_str_29
-           2321b            2321b       11     1                 __dust_str_30
-           2322c            2322c       10     1                 __dust_str_31
-           2323c            2323c       24     1                 __dust_str_32
-           23260            23260       3d     1                 __dust_str_33
-           2329d            2329d       22     1                 __dust_str_34
-           232bf            232bf        3     1                 __dust_str_35
-           232c2            232c2       1f     1                 __dust_str_36
-           232e1            232e1       1a     1                 __dust_str_37
+           203a4            203a4     35b7     1         D:\code\dustlang\xdv-os\src\target\dust\obj_stage_kernel\xdv_os_kernel_bundle_1f9f3f39583e58c0.o:(.text)
+           203a4            203a4     35b7     1                 kernel_start
+           2395b            2395b      34d     1 .data
+           2395b            2395b       19     1         D:\code\dustlang\xdv-os\src\target\dust\obj_stage_kernel\xdvfs_format_d7160525ea35ac25.o:(.data)
+           2395b            2395b       19     1                 __dust_str_0
+           23974            23974       16     1         D:\code\dustlang\xdv-os\src\target\dust\obj_stage_kernel\xdvfs_mount_45fa4a6e5d9cf8bf.o:(.data)
+           23974            23974       16     1                 __dust_str_0
+           2398a            2398a      31e     1         D:\code\dustlang\xdv-os\src\target\dust\obj_stage_kernel\xdv_os_kernel_bundle_1f9f3f39583e58c0.o:(.data)
+           2398a            2398a       17     1                 __dust_str_0
+           239a1            239a1       24     1                 __dust_str_1
+           239c5            239c5       1f     1                 __dust_str_2
+           239e4            239e4       17     1                 __dust_str_3
+           239fb            239fb       24     1                 __dust_str_4
+           23a1f            23a1f       17     1                 __dust_str_5
+           23a36            23a36       20     1                 __dust_str_6
+           23a56            23a56       1a     1                 __dust_str_7
+           23a70            23a70       21     1                 __dust_str_8
+           23a91            23a91       26     1                 __dust_str_9
+           23ab7            23ab7       33     1                 __dust_str_10
+           23aea            23aea       32     1                 __dust_str_11
+           23b1c            23b1c       40     1                 __dust_str_12
+           23b5c            23b5c       18     1                 __dust_str_13
+           23b74            23b74       1f     1                 __dust_str_14
+           23b93            23b93       1d     1                 __dust_str_15
+           23bb0            23bb0       18     1                 __dust_str_16
+           23bc8            23bc8       11     1                 __dust_str_17
+           23bd9            23bd9       10     1                 __dust_str_18
+           23be9            23be9       24     1                 __dust_str_19
+           23c0d            23c0d       3d     1                 __dust_str_20
+           23c4a            23c4a       22     1                 __dust_str_21
+           23c6c            23c6c        3     1                 __dust_str_22
+           23c6f            23c6f       1f     1                 __dust_str_23
+           23c8e            23c8e       1a     1                 __dust_str_24
                0                0       6c     1 .comment
                0                0       6c     1         <internal>:(.comment)
-               0                0      648     8 .symtab
-               0                0      648     8         <internal>:(.symtab)
+               0                0      510     8 .symtab
+               0                0      510     8         <internal>:(.symtab)
                0                0       30     1 .shstrtab
                0                0       30     1         <internal>:(.shstrtab)
-               0                0      398     1 .strtab
-               0                0      398     1         <internal>:(.strtab)
+               0                0      2e2     1 .strtab
+               0                0      2e2     1         <internal>:(.strtab)

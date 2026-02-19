@@ -1,0 +1,6 @@
+src/*.bin
+src/*.img
+src/*.vdi
+src/target
+src/target/*
+src/*.log

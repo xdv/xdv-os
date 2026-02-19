@@ -6,19 +6,6 @@ forge XdvOsBootContract {
     const STATUS_VERSION: UInt32 = 3;
 
     proc K::xdv_os_boot_contract() -> UInt32 {
-        emit "";
-        emit "";
-        emit "";
-        emit "";
-        emit "";
-        emit "";
-        emit "";
-        emit "";
-        emit "                  XX   XX   DDDDD    VV     VV";
-        emit "                   XX XX    DD  DD    VV   VV ";
-        emit "                    XXX     DD   DD    VV VV  ";
-        emit "                   XX XX    DD  DD      VVV   ";
-        emit "                  XX   XX   DDDDD        V    ";
         return STATUS_OK;
     }
 

@@ -1,7 +1,7 @@
 ; XDV OS boot sector stage-0 (MBR, partition-aware).
-; Reads the xdvfs boot record from the boot partition, loads boot.bin first,
-; then loads kernel.bin and performs the handoff chain.
-; This stage is transport only; boot policy remains defined in Dust.
+; Reads the xdvfs boot record from the boot partition and loads boot.bin only.
+; boot.bin performs splash -> kernel discovery -> kernel handoff.
+; This stage is transport only.
 
 [ORG 0x7C00]
 [BITS 16]
@@ -51,10 +51,10 @@ start:
     ; boot record offsets:
     ; +16 boot.bin relative LBA
     ; +20 boot.bin sectors
-    ; +40 boot.bin entry offset from image base (0x00100000)
+    ; +40 boot.bin entry offset from image base (0x00010000)
     ; +32 kernel.bin relative LBA
     ; +36 kernel.bin sectors
-    ; +44 kernel.bin entry offset from image base (0x00100000)
+    ; +44 kernel.bin entry offset from image base (0x00020000)
     mov si, BOOTREC_BUFFER_OFF
     mov eax, [si + 16]
     add eax, [partition_start_lba]
@@ -70,6 +70,7 @@ start:
     int 0x13
     jc disk_error
 
+    ; Preload kernel.bin so stage-0 can handoff even if boot.bin returns.
     mov si, BOOTREC_BUFFER_OFF
     mov eax, [si + 32]
     add eax, [partition_start_lba]

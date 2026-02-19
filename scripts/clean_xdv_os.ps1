@@ -121,7 +121,9 @@ if (-not $Apply) {
 }
 
 foreach ($item in $items) {
-    Remove-Item -LiteralPath $item.FullName -Force -Recurse
+    if (Test-Path -LiteralPath $item.FullName) {
+        Remove-Item -LiteralPath $item.FullName -Force -Recurse
+    }
 }
 
 Write-Host ""

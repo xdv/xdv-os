@@ -5,9 +5,8 @@
 # - compiles GCC-style object sets with dust obj for boot and kernel sources
 # - links boot.bin with dustlink from xdv-boot object set
 # - links kernel.bin with dustlink from xdv-kernel + xdv-runtime + xdv-xdvfs object set
-# - composes a Dust boot-chain bundle for traceability:
+# - composes a Dust kernel-chain bundle for traceability:
 #   xdv-os/src/xdv_os_boot_contract.ds
-#   + xdv-boot/src/boot_loader_profile.ds
 #   + xdv-runtime/src/runtime_bridge.ds
 #   + xdv-shell/src/shell_boot_units.ds
 #   + xdv-shell/src/shell_bridge.ds
@@ -24,12 +23,14 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 OS_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 REPO_ROOT="$(cd "$OS_ROOT/.." && pwd)"
 OS_BOOT_CONTRACT_SRC="$SCRIPT_DIR/xdv_os_boot_contract.ds"
+BOOT_SRC="$REPO_ROOT/xdv-boot/src/boot.ds"
 BOOT_PROFILE_SRC="$REPO_ROOT/xdv-boot/src/boot_loader_profile.ds"
 BOOT_SPLASH_PROFILE_SRC="$REPO_ROOT/xdv-boot/src/boot_splash_profile.ds"
 SHELL_BOOT_UNITS_SRC="$REPO_ROOT/xdv-shell/src/shell_boot_units.ds"
 SHELL_BRIDGE_SRC="$REPO_ROOT/xdv-shell/src/shell_bridge.ds"
 KERNEL_SRC="$REPO_ROOT/xdv-kernel/sector/xdv_kernel/src/kernel.ds"
 RUNTIME_BRIDGE_SRC="$REPO_ROOT/xdv-runtime/src/runtime_bridge.ds"
+BOOT_COMBINED_SRC="$SCRIPT_DIR/target/xdv_os_boot_bundle.ds"
 KERNEL_COMBINED_SRC="$SCRIPT_DIR/target/xdv_os_kernel_bundle.ds"
 BOOT_OBJ_STAGE_DIR="$SCRIPT_DIR/target/dust/obj_stage_boot"
 KERNEL_OBJ_STAGE_DIR="$SCRIPT_DIR/target/dust/obj_stage_kernel"
@@ -40,9 +41,9 @@ KERNEL_ENTRY_OFFSET=0
 BOOT_BIN_PATH="boot.bin"
 KERNEL_BIN_PATH="kernel.bin"
 DUSTLINK_CMD="$REPO_ROOT/dustlink/target/release/dustlink"
-BOOT_ENTRY_SYMBOL="XdvOsBootContract::boot_splash_contract"
+BOOT_ENTRY_SYMBOL="boot_main"
 KERNEL_ENTRY_SYMBOL="XdvKernel::kernel_start"
-BOOT_LINK_ENTRY="boot_splash_contract"
+BOOT_LINK_ENTRY="boot_main"
 KERNEL_LINK_ENTRY="kernel_start"
 if [ -f "$REPO_ROOT/dustlink/target/release/dustlink.exe" ]; then
     DUSTLINK_CMD="$REPO_ROOT/dustlink/target/release/dustlink.exe"
@@ -118,6 +119,7 @@ fi
 
 echo "[1/7] Validating required subsystem entrypoints..."
 CHECK_TARGETS=(
+    "$BOOT_SRC"
     "$OS_BOOT_CONTRACT_SRC"
     "$BOOT_PROFILE_SRC"
     "$BOOT_SPLASH_PROFILE_SRC"
@@ -173,13 +175,24 @@ for file in "${CHECK_TARGETS[@]}"; do
     "$DUST_CMD" check "$file" >/dev/null
 done
 
-echo "[2/7] Composing Dust boot chain bundle..."
+echo "[2/7] Composing Dust boot/kernel source bundles..."
 cd "$SCRIPT_DIR"
 mkdir -p "$SCRIPT_DIR/target"
 cat \
-    "$OS_BOOT_CONTRACT_SRC" \
-    "$BOOT_PROFILE_SRC" \
+    "$BOOT_SRC" \
     "$BOOT_SPLASH_PROFILE_SRC" \
+    "$BOOT_PROFILE_SRC" \
+    "$REPO_ROOT/xdv-boot/src/boot_disk.ds" \
+    "$REPO_ROOT/xdv-boot/src/boot_gdt.ds" \
+    "$REPO_ROOT/xdv-boot/src/boot_idt.ds" \
+    "$REPO_ROOT/xdv-boot/src/boot_paging.ds" \
+    "$REPO_ROOT/xdv-boot/src/boot_xdvfs_mount.ds" \
+    "$REPO_ROOT/xdv-boot/src/boot_mbr.ds" \
+    "$REPO_ROOT/xdv-boot/src/boot_uefi.ds" \
+    "$REPO_ROOT/xdv-boot/src/boot_kernel_load.ds" \
+    "$REPO_ROOT/xdv-boot/src/boot_stage1.ds" > "$BOOT_COMBINED_SRC"
+cat \
+    "$OS_BOOT_CONTRACT_SRC" \
     "$RUNTIME_BRIDGE_SRC" \
     "$SHELL_BOOT_UNITS_SRC" \
     "$SHELL_BRIDGE_SRC" \
@@ -187,8 +200,7 @@ cat \
 
 echo "[3/7] Compiling boot object set via Dust obj..."
 "$DUST_CMD" obj \
-    "$OS_BOOT_CONTRACT_SRC" \
-    "$REPO_ROOT/xdv-boot/src" \
+    "$BOOT_COMBINED_SRC" \
     --out-dir "$BOOT_OBJ_STAGE_DIR" \
     --target "x86_64-pc-none-elf" \
     --entry "$BOOT_ENTRY_SYMBOL" \
@@ -228,7 +240,7 @@ echo "  [boot-link] frontend: $DUSTLINK_CMD"
     -e "$BOOT_LINK_ENTRY" \
     -o "$BOOT_BIN_PATH" \
     "${boot_objs[@]}"
-boot_entry_hex="$(awk '/[[:space:]]boot_splash_contract$/ {print $1; exit}' "$BOOT_MAP_PATH")"
+boot_entry_hex="$(awk '/[[:space:]]boot_main$/ {print $1; exit}' "$BOOT_MAP_PATH")"
 if [ -z "$boot_entry_hex" ]; then
     echo "ERROR: Failed to resolve boot entry offset from $BOOT_MAP_PATH"
     exit 1
