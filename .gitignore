@@ -1,6 +1,9 @@
-src/*.bin
-src/*.img
-src/*.vdi
-src/target
-src/target/*
-src/*.log
+# xdv-os generated build artifacts
+/src/*.bin
+/src/*.img
+/src/*.vdi
+/src/*.log
+/src/*.map
+
+# build staging/output directories
+/src/target/
