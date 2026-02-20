@@ -44,13 +44,13 @@ BOOT_ENTRY_OFFSET=0
 KERNEL_ENTRY_OFFSET=0
 BOOT_BIN_PATH="boot.bin"
 KERNEL_BIN_PATH="kernel.bin"
-DUSTLINK_CMD="$REPO_ROOT/dustlink/target/release/dustlink"
+DUSTLINK_CMD="$REPO_ROOT/dustlink/target/dust/dustlink"
 BOOT_ENTRY_SYMBOL="XdvBoot::boot_main"
 KERNEL_ENTRY_SYMBOL="XdvKernel::kernel_start"
 BOOT_LINK_ENTRY="xdv_lib_boot_main"
 KERNEL_LINK_ENTRY="kernel_start"
-if [ -f "$REPO_ROOT/dustlink/target/release/dustlink.exe" ]; then
-    DUSTLINK_CMD="$REPO_ROOT/dustlink/target/release/dustlink.exe"
+if [ -f "$REPO_ROOT/dustlink/target/dust/dustlink.exe" ]; then
+    DUSTLINK_CMD="$REPO_ROOT/dustlink/target/dust/dustlink.exe"
 fi
 
 echo "=== XDV OS Build (Dust compiler + DPL) ==="
@@ -104,20 +104,24 @@ if [ -z "$DUST_CMD" ] || [ ! -x "$DUST_CMD" ]; then
 fi
 
 if [ ! -f "$DUSTLINK_CMD" ]; then
-    if [ -f "$REPO_ROOT/dustlink/Cargo.toml" ]; then
-        echo "[dustlink] Building dustlink frontend..."
-        (cd "$REPO_ROOT/dustlink" && cargo build --release >/dev/null 2>&1 || cargo build >/dev/null 2>&1)
-        if [ -f "$REPO_ROOT/dustlink/target/release/dustlink.exe" ]; then
-            DUSTLINK_CMD="$REPO_ROOT/dustlink/target/release/dustlink.exe"
-        elif [ -f "$REPO_ROOT/dustlink/target/release/dustlink" ]; then
-            DUSTLINK_CMD="$REPO_ROOT/dustlink/target/release/dustlink"
-        fi
+    echo "[dustlink] Building dustlink from Dust source..."
+    "$DUST_CMD" build "$REPO_ROOT/dustlink/src" --out "$REPO_ROOT/dustlink/target/dust/dustlink"
+    if [ -f "$REPO_ROOT/dustlink/target/dust/dustlink.exe" ]; then
+        DUSTLINK_CMD="$REPO_ROOT/dustlink/target/dust/dustlink.exe"
+    elif [ -f "$REPO_ROOT/dustlink/target/dust/dustlink" ]; then
+        DUSTLINK_CMD="$REPO_ROOT/dustlink/target/dust/dustlink"
+    fi
+fi
+
+if [ ! -f "$DUSTLINK_CMD" ]; then
+    if command -v dustlink >/dev/null 2>&1; then
+        DUSTLINK_CMD="$(command -v dustlink)"
     fi
 fi
 
 if [ ! -f "$DUSTLINK_CMD" ]; then
     echo "ERROR: dustlink not found at $DUSTLINK_CMD"
-    echo "       Build from $REPO_ROOT/dustlink with: cargo build --release"
+    echo "       Build with: $DUST_CMD build $REPO_ROOT/dustlink/src --out $REPO_ROOT/dustlink/target/dust/dustlink"
     exit 1
 fi
 

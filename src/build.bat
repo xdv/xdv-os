@@ -65,7 +65,7 @@ set "KERNEL_BIN_PATH=kernel.bin"
 set "MBR_IMAGE_PATH=%~dp0xdv-os-mbr-64m.img"
 set "MBR_VDI_PATH=%~dp0xdv-os-mbr-64m.vdi"
 set "SYNC_VDI_SCRIPT=%OS_ROOT%\scripts\sync_vdi.ps1"
-set "DUSTLINK_CMD=%REPO_ROOT%\dustlink\target\release\dustlink.exe"
+set "DUSTLINK_CMD=%REPO_ROOT%\dustlink\target\dust\dustlink.exe"
 set "BOOT_ENTRY_SYMBOL=XdvBoot::boot_main"
 set "KERNEL_ENTRY_SYMBOL=XdvKernel::kernel_start"
 set "BOOT_LINK_ENTRY=xdv_lib_boot_main"
@@ -126,16 +126,26 @@ if not defined DUST_CMD (
 )
 
 if not exist "%DUSTLINK_CMD%" (
-    if exist "%REPO_ROOT%\dustlink\Cargo.toml" (
-        echo [dustlink] Building dustlink frontend...
-        pushd "%REPO_ROOT%\dustlink" >nul
-        cargo build --release >nul 2>nul || cargo build >nul 2>nul
-        popd >nul
+    echo [dustlink] Building dustlink from Dust source...
+    "%DUST_CMD%" build "%REPO_ROOT%\dustlink\src" --out "%REPO_ROOT%\dustlink\target\dust\dustlink"
+    if exist "%REPO_ROOT%\dustlink\target\dust\dustlink.exe" (
+        set "DUSTLINK_CMD=%REPO_ROOT%\dustlink\target\dust\dustlink.exe"
+    ) else if exist "%REPO_ROOT%\dustlink\target\dust\dustlink" (
+        set "DUSTLINK_CMD=%REPO_ROOT%\dustlink\target\dust\dustlink"
     )
 )
+
+if not exist "%DUSTLINK_CMD%" (
+    for /f "delims=" %%I in ('where dustlink 2^>nul') do (
+        set "DUSTLINK_CMD=%%I"
+        goto :dustlink_found
+    )
+)
+
+:dustlink_found
 if not exist "%DUSTLINK_CMD%" (
     echo ERROR: dustlink not found at %DUSTLINK_CMD%
-    echo        Build from %REPO_ROOT%\dustlink with: cargo build --release
+    echo        Build with: %DUST_CMD% build %REPO_ROOT%\dustlink\src --out %REPO_ROOT%\dustlink\target\dust\dustlink
     exit /b 1
 )
 
