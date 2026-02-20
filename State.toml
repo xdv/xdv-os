@@ -13,8 +13,8 @@ xdv_xdvfs = "../xdv-xdvfs"
 xdv_runtime = "../xdv-runtime"
 xdv_shell = "../xdv-shell"
 dustlib = "../dustlib"
-dustlib_k = "../dustlib_k"
-dust_runtime = "../dust_runtime"
+dustlib_k = "../dustlib-k"
+dust_runtime = "../dust-runtime"
 
 [workspace.entrypoints]
 xdv_os = "src/xdv_os_boot_contract.ds"
@@ -24,9 +24,10 @@ xdv_xdvfs = "../xdv-xdvfs/src/xdvfs_mount.ds"
 xdv_runtime = "../xdv-runtime/src/runtime_bridge.ds"
 xdv_shell = "../xdv-shell/src/shell_bridge.ds"
 dustlib = "../dustlib/sector/dustlib_core/src/xdv_os_bridge.ds"
-dustlib_k = "../dustlib_k/sector/dustlib_k/lib.ds"
-dust_runtime = "../dust_runtime/src/runtime_bridge.ds"
+dustlib_k = "../dustlib-k/sector/dustlib-k/lib.ds"
+dust_runtime = "../dust-runtime/src/runtime_bridge.ds"
 
 [target.x64-pc-none]
 linker = "ld"
 linker_flags = ["-nostdlib", "-static"]
+

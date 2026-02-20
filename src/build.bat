@@ -159,24 +159,24 @@ call :check_file "%SHELL_BOOT_UNITS_SRC%" || exit /b 1
 call :check_file "%SHELL_BRIDGE_SRC%" || exit /b 1
 call :check_file "%REPO_ROOT%\xdv-edx\src\edx_bridge.ds" || exit /b 1
 call :check_file "%REPO_ROOT%\dustlib\sector\dustlib_core\src\xdv_os_bridge.ds" || exit /b 1
-call :check_file "%REPO_ROOT%\dustlib_k\sector\dustlib_k\lib.ds" || exit /b 1
-call :check_file "%REPO_ROOT%\dust_runtime\src\runtime_bridge.ds" || exit /b 1
-call :check_file "%REPO_ROOT%\xdv-core\src\xdv_core_console_app.ds" || exit /b 1
-call :check_file "%REPO_ROOT%\xdv-core\src\xdv_core_init_app.ds" || exit /b 1
-call :check_file "%REPO_ROOT%\xdv-core\src\xdv_core_io_app.ds" || exit /b 1
-call :check_file "%REPO_ROOT%\xdv-core\src\xdv_core_memory_app.ds" || exit /b 1
-call :check_file "%REPO_ROOT%\xdv-core\src\xdv_core_process_app.ds" || exit /b 1
-call :check_file "%REPO_ROOT%\xdv-core\src\xdv_core_scheduler_app.ds" || exit /b 1
-call :check_file "%REPO_ROOT%\xdv-core\src\xdv_core_string_app.ds" || exit /b 1
-call :check_file "%REPO_ROOT%\xdv-core\src\xdv_core_runtime_admin.ds" || exit /b 1
-call :check_file "%REPO_ROOT%\xdv-core\src\xdv_core_sysmon_app.ds" || exit /b 1
-call :check_file "%REPO_ROOT%\xdv-core\src\xdv_core_service_app.ds" || exit /b 1
-call :check_file "%REPO_ROOT%\xdv-core\src\xdv_core_log_app.ds" || exit /b 1
-call :check_file "%REPO_ROOT%\xdv-core\src\xdv_core_storage_app.ds" || exit /b 1
-call :check_file "%REPO_ROOT%\xdv-core\src\xdv_core_security_app.ds" || exit /b 1
-call :check_file "%REPO_ROOT%\xdv-core\src\xdv_core_recovery_app.ds" || exit /b 1
-call :check_file "%REPO_ROOT%\xdv-core\src\xdv_core_cli.ds" || exit /b 1
-call :check_file "%REPO_ROOT%\xdv-core\src\xdv_core_command_profile.ds" || exit /b 1
+call :check_file "%REPO_ROOT%\dustlib-k\sector\dustlib-k\lib.ds" || exit /b 1
+call :check_file "%REPO_ROOT%\dust-runtime\src\runtime_bridge.ds" || exit /b 1
+call :check_file "%REPO_ROOT%\xdv-runtime-utils\src\xdv_core_console_app.ds" || exit /b 1
+call :check_file "%REPO_ROOT%\xdv-runtime-utils\src\xdv_core_init_app.ds" || exit /b 1
+call :check_file "%REPO_ROOT%\xdv-runtime-utils\src\xdv_core_io_app.ds" || exit /b 1
+call :check_file "%REPO_ROOT%\xdv-runtime-utils\src\xdv_core_memory_app.ds" || exit /b 1
+call :check_file "%REPO_ROOT%\xdv-runtime-utils\src\xdv_core_process_app.ds" || exit /b 1
+call :check_file "%REPO_ROOT%\xdv-runtime-utils\src\xdv_core_scheduler_app.ds" || exit /b 1
+call :check_file "%REPO_ROOT%\xdv-runtime-utils\src\xdv_core_string_app.ds" || exit /b 1
+call :check_file "%REPO_ROOT%\xdv-runtime-utils\src\xdv_core_runtime_admin.ds" || exit /b 1
+call :check_file "%REPO_ROOT%\xdv-runtime-utils\src\xdv_core_sysmon_app.ds" || exit /b 1
+call :check_file "%REPO_ROOT%\xdv-runtime-utils\src\xdv_core_service_app.ds" || exit /b 1
+call :check_file "%REPO_ROOT%\xdv-runtime-utils\src\xdv_core_log_app.ds" || exit /b 1
+call :check_file "%REPO_ROOT%\xdv-runtime-utils\src\xdv_core_storage_app.ds" || exit /b 1
+call :check_file "%REPO_ROOT%\xdv-runtime-utils\src\xdv_core_security_app.ds" || exit /b 1
+call :check_file "%REPO_ROOT%\xdv-runtime-utils\src\xdv_core_recovery_app.ds" || exit /b 1
+call :check_file "%REPO_ROOT%\xdv-runtime-utils\src\xdv_core_cli.ds" || exit /b 1
+call :check_file "%REPO_ROOT%\xdv-runtime-utils\src\xdv_core_command_profile.ds" || exit /b 1
 call :check_file "%REPO_ROOT%\xdv-xdvfs-utils\src\xdvfs_utils_partition.ds" || exit /b 1
 call :check_file "%REPO_ROOT%\xdv-xdvfs-utils\src\xdvfs_utils_mkfs.ds" || exit /b 1
 call :check_file "%REPO_ROOT%\xdv-xdvfs-utils\src\xdvfs_utils_fsck.ds" || exit /b 1
@@ -367,3 +367,4 @@ echo   VirtualBox BIOS: attach xdv-os-mbr-64m.img (or xdv-os.img)
 echo   VirtualBox UEFI: enable EFI and attach xdv-os-uefi-64m.img
 echo.
 exit /b 0
+

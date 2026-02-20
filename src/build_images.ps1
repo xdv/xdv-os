@@ -89,7 +89,7 @@ function New-PreloadPayload([string]$RepoRootPath, [int]$SizeMb, [byte[]]$Kernel
     $entries = New-Object System.Collections.Generic.List[object]
     $payloadRoots = @(
         "xdv-os\src",
-        "xdv-core\src",
+        "xdv-runtime-utils\src",
         "xdv-edx\src",
         "xdv-shell\src"
     )
