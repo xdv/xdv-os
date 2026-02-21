@@ -1,5 +1,23 @@
 # XDV OS Changelog
 
+## 2026-02-21
+
+### Added
+- Added `xdv-os/docs/` documentation set:
+  - `docs/README.md`
+  - `docs/build_pipeline.md`
+  - `docs/boot_contract.md`
+  - `docs/image_layout.md`
+
+### Changed
+- Updated `README.md` to reflect current integration role of `xdv-os` and the
+  current boot contract:
+  - stage0 loads `boot.bin` only,
+  - `boot.bin` handles `/console/kernel.bin` discovery and handoff,
+  - `boot.bin` and `kernel.bin` are linked through `dustlink` from object sets.
+- Updated README artifact and build composition descriptions to match current
+  build script behavior (`build.bat`, `build.sh`, `build_images.ps1`).
+
 ## 2026-02-19
 
 ### Changed
