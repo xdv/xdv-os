@@ -1,4 +1,7 @@
-// XDV OS boot contract. This is the Dust-defined orchestration entry used by xdv-kernel.
+// File: xdv_os_boot_contract.ds - This file is part of XDV
+// Copyright (c) 2026 Dust LLC, and Contributors
+// Description:
+//   XDV OS boot contract. This is the Dust-defined orchestration entry used by xdv-kernel.
 
 forge XdvOsBootContract {
 
