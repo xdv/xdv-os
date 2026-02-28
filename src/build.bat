@@ -10,6 +10,11 @@ REM   xdv-os/src/xdv_os_boot_contract.ds
 REM   + xdv-runtime/src/runtime_bridge.ds
 REM   + xdv-shell/src/shell_boot_units.ds
 REM   + xdv-shell/src/shell_bridge.ds
+REM   + xdv-dal/src/dal.ds
+REM   + xdv-cds/src/cds.ds
+REM   + xdv-umf/src/umf.ds
+REM   + xdv-hypervisor/src/hypervisor.ds
+REM   + xdv-sdbm/src/sdbm.ds
 REM   + xdv-kernel/sector/xdv_kernel/src/kernel.ds
 REM - assembles MBR boot sector
 REM - generates partitioned 64MB images:
@@ -49,6 +54,11 @@ set "XDV_LIB_BOOT_RUNTIME_SRC=%REPO_ROOT%\xdv-lib\sector\xdv_lib\boot_runtime.ds
 set "XDV_LIB_BOOT_RUNTIME_ASM=%REPO_ROOT%\xdv-lib\asm\xdv_lib_boot_runtime.asm"
 set "SHELL_BOOT_UNITS_SRC=%REPO_ROOT%\xdv-shell\src\shell_boot_units.ds"
 set "SHELL_BRIDGE_SRC=%REPO_ROOT%\xdv-shell\src\shell_bridge.ds"
+set "DAL_SRC=%REPO_ROOT%\xdv-dal\src\dal.ds"
+set "CDS_SRC=%REPO_ROOT%\xdv-cds\src\cds.ds"
+set "UMF_SRC=%REPO_ROOT%\xdv-umf\src\umf.ds"
+set "HYPERVISOR_SRC=%REPO_ROOT%\xdv-hypervisor\src\hypervisor.ds"
+set "SDBM_SRC=%REPO_ROOT%\xdv-sdbm\src\sdbm.ds"
 set "KERNEL_SRC=%REPO_ROOT%\xdv-kernel\sector\xdv_kernel\src\kernel.ds"
 set "RUNTIME_BRIDGE_SRC=%REPO_ROOT%\xdv-runtime\src\runtime_bridge.ds"
 set "BOOT_COMBINED_SRC=%~dp0target\xdv_os_boot_bundle.ds"
@@ -160,6 +170,11 @@ call :check_file "%REPO_ROOT%\xdv-boot\src\boot_mbr.ds" || exit /b 1
 call :check_file "%REPO_ROOT%\xdv-boot\src\boot_uefi.ds" || exit /b 1
 call :check_file "%REPO_ROOT%\xdv-boot\src\boot_stage1.ds" || exit /b 1
 call :check_file "%KERNEL_SRC%" || exit /b 1
+call :check_file "%DAL_SRC%" || exit /b 1
+call :check_file "%CDS_SRC%" || exit /b 1
+call :check_file "%UMF_SRC%" || exit /b 1
+call :check_file "%HYPERVISOR_SRC%" || exit /b 1
+call :check_file "%SDBM_SRC%" || exit /b 1
 call :check_file "%REPO_ROOT%\xdv-xdvfs\src\xdvfs_mount.ds" || exit /b 1
 call :check_file "%REPO_ROOT%\xdv-xdvfs\src\xdvfs_storage_device.ds" || exit /b 1
 call :check_file "%REPO_ROOT%\xdv-xdvfs\src\xdvfs_partition.ds" || exit /b 1
@@ -246,6 +261,16 @@ if %ERRORLEVEL% neq 0 (
     echo.
     type "%SHELL_BRIDGE_SRC%"
     echo.
+    type "%DAL_SRC%"
+    echo.
+    type "%CDS_SRC%"
+    echo.
+    type "%UMF_SRC%"
+    echo.
+    type "%HYPERVISOR_SRC%"
+    echo.
+    type "%SDBM_SRC%"
+    echo.
     type "%KERNEL_SRC%"
     echo.
     type "%XDV_LIB_MAIN_SRC%"
@@ -298,8 +323,14 @@ if %ERRORLEVEL% neq 0 (
 
 echo [5/7] Linking boot.bin via dustlink...
 set "BOOT_LINK_OBJECTS="
-for %%F in ("%BOOT_OBJ_STAGE_DIR%\*.o") do (
-    set "BOOT_LINK_OBJECTS=!BOOT_LINK_OBJECTS! "%%~fF""
+set "BOOT_OBJ_COUNT=0"
+for /f "usebackq delims=" %%I in (`powershell -NoProfile -Command "Get-ChildItem -LiteralPath '%BOOT_OBJ_STAGE_DIR%' -Filter '*.o' -File | Sort-Object Name | ForEach-Object { $_.FullName }"`) do (
+    set /a BOOT_OBJ_COUNT+=1
+    set "BOOT_LINK_OBJECTS=!BOOT_LINK_OBJECTS! "%%~I""
+)
+if !BOOT_OBJ_COUNT! equ 0 (
+    echo ERROR: no boot objects found in %BOOT_OBJ_STAGE_DIR%
+    exit /b 1
 )
 set "BOOT_LINK_OBJECTS=!BOOT_LINK_OBJECTS! "%XDV_LIB_BOOT_RUNTIME_OBJ%""
 echo   [boot-link] frontend: %DUSTLINK_CMD%
@@ -319,8 +350,14 @@ echo   [boot-link] entry offset: !BOOT_ENTRY_OFFSET!
 
 echo [6/7] Linking kernel.bin via dustlink + assembling boot sector (NASM)...
 set "KERNEL_LINK_OBJECTS="
-for %%F in ("%KERNEL_OBJ_STAGE_DIR%\*.o") do (
-    set "KERNEL_LINK_OBJECTS=!KERNEL_LINK_OBJECTS! "%%~fF""
+set "KERNEL_OBJ_COUNT=0"
+for /f "usebackq delims=" %%I in (`powershell -NoProfile -Command "Get-ChildItem -LiteralPath '%KERNEL_OBJ_STAGE_DIR%' -Filter '*.o' -File | Sort-Object Name | ForEach-Object { $_.FullName }"`) do (
+    set /a KERNEL_OBJ_COUNT+=1
+    set "KERNEL_LINK_OBJECTS=!KERNEL_LINK_OBJECTS! "%%~I""
+)
+if !KERNEL_OBJ_COUNT! equ 0 (
+    echo ERROR: no kernel objects found in %KERNEL_OBJ_STAGE_DIR%
+    exit /b 1
 )
 echo   [kernel-link] frontend: %DUSTLINK_CMD%
 "%DUSTLINK_CMD%" -m elf_x86_64 -nostdlib --oformat=binary --image-base 0x20000 -Ttext 0x20000 --allow-multiple-definition -Map "%KERNEL_MAP_PATH%" -e %KERNEL_LINK_ENTRY% -o "%KERNEL_BIN_PATH%" !KERNEL_LINK_OBJECTS!

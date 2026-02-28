@@ -34,3 +34,13 @@ UEFI image generation includes:
 - GPT primary/backup headers and partition arrays
 - ESP volume content (including boot manager payload)
 - xdvfs partition carrying `boot.bin`, `kernel.bin`, and preload payload
+
+## Deterministic Metadata
+
+Image metadata generation is deterministic for identical inputs:
+
+- GPT disk GUID and partition unique GUIDs are derived from build payload hashes.
+- Generated UEFI stub PE/COFF timestamp is fixed for reproducible bytes.
+- Preload payload entry ordering is stable and sorted.
+
+This supports CI two-pass hash equality checks for unchanged source inputs.

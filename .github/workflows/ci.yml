@@ -7,13 +7,13 @@ on:
     branches: [main]
 
 jobs:
-  build:
+  build_deterministic:
+    name: Build + Determinism
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        # Repo must contain both xdv-os and dust (e.g. dustlang monorepo)
 
       - name: Install NASM
         run: sudo apt-get update && sudo apt-get install -y nasm
@@ -26,28 +26,82 @@ jobs:
           if [ -d dust ]; then
             cd dust && cargo build --release 2>/dev/null || cargo build
           else
-            echo "No dust/ in repo; assuming dust is on PATH or will be built by build.sh"
+            echo "No dust/ in repo; assuming dust is on PATH or built by xdv-os/src/build.sh"
           fi
 
-      - name: Build xdv-os (dust + NASM)
+      - name: Enforce xdv-os orchestration-only scope
+        run: |
+          extra_ds_count=$(find xdv-os/src -maxdepth 1 -type f -name '*.ds' ! -name 'xdv_os_boot_contract.ds' | wc -l)
+          if [ "$extra_ds_count" -ne 0 ]; then
+            echo "xdv-os/src contains unexpected runtime Dust sources; expected orchestration-only scope."
+            find xdv-os/src -maxdepth 1 -type f -name '*.ds' ! -name 'xdv_os_boot_contract.ds'
+            exit 1
+          fi
+
+      - name: Build xdv-os (pass 1)
         run: |
           chmod +x xdv-os/src/build.sh
           ./xdv-os/src/build.sh
 
-      - name: Verify disk image
+      - name: Capture pass-1 hashes
         run: |
-          [ -f xdv-os/src/xdv-os.img ] || exit 1
-          ls -la xdv-os/src/xdv-os.img
-          xxd -s 510 xdv-os/src/xdv-os.img -l 2
+          [ -f xdv-os/src/boot.bin ]
+          [ -f xdv-os/src/kernel.bin ]
+          [ -f xdv-os/src/xdv-os-mbr-64m.img ]
+          [ -f xdv-os/src/xdv-os-uefi-64m.img ]
+          sha256sum \
+            xdv-os/src/boot.bin \
+            xdv-os/src/kernel.bin \
+            xdv-os/src/xdv-os-mbr-64m.img \
+            xdv-os/src/xdv-os-uefi-64m.img > /tmp/xdv-pass1.sha256
 
-      - name: Verify components
+      - name: Build xdv-os (pass 2)
         run: |
-          [ -d xdv-os/xdv-boot ] && [ -d xdv-os/xdv-kernel ] && [ -d xdv-os/xdv-runtime ] && \
-          [ -d xdv-os/xdv-shell ] && [ -d xdv-os/xdv-xdvfs ] || exit 1
-          echo "All components present"
+          ./xdv-os/src/build.sh
 
-      - name: Upload xdv-os.img
+      - name: Verify deterministic outputs
+        run: |
+          sha256sum \
+            xdv-os/src/boot.bin \
+            xdv-os/src/kernel.bin \
+            xdv-os/src/xdv-os-mbr-64m.img \
+            xdv-os/src/xdv-os-uefi-64m.img > /tmp/xdv-pass2.sha256
+          diff -u /tmp/xdv-pass1.sha256 /tmp/xdv-pass2.sha256
+
+      - name: Verify integration dependencies
+        run: |
+          [ -d xdv-boot ] && [ -d xdv-kernel ] && [ -d xdv-runtime ] && \
+          [ -d xdv-shell ] && [ -d xdv-xdvfs ] || exit 1
+          echo "All integration dependencies present"
+
+      - name: Upload xdv-os images
         uses: actions/upload-artifact@v4
         with:
-          name: xdv-os-img
-          path: xdv-os/src/xdv-os.img
+          name: xdv-os-images
+          path: |
+            xdv-os/src/xdv-os.img
+            xdv-os/src/xdv-os-mbr-64m.img
+            xdv-os/src/xdv-os-uefi-64m.img
+
+  virtualbox_boot_profile:
+    name: VirtualBox BIOS Boot Profile
+    needs: build_deterministic
+    runs-on: [self-hosted, windows, xdv-virtualbox]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build xdv-os image on runner
+        shell: cmd
+        run: |
+          cd xdv-os\src
+          build.bat
+
+      - name: Run VirtualBox boot profile test
+        shell: pwsh
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass -File xdv-os\scripts\ci_virtualbox_boot_test.ps1 -ImagePath xdv-os\src\xdv-os-mbr-64m.img -BootTimeoutSec 20

@@ -10,6 +10,11 @@
 #   + xdv-runtime/src/runtime_bridge.ds
 #   + xdv-shell/src/shell_boot_units.ds
 #   + xdv-shell/src/shell_bridge.ds
+#   + xdv-dal/src/dal.ds
+#   + xdv-cds/src/cds.ds
+#   + xdv-umf/src/umf.ds
+#   + xdv-hypervisor/src/hypervisor.ds
+#   + xdv-sdbm/src/sdbm.ds
 #   + xdv-kernel/sector/xdv_kernel/src/kernel.ds
 # - assembles MBR boot sector
 # - generates partitioned 64MB images:
@@ -31,6 +36,11 @@ XDV_LIB_BOOT_RUNTIME_SRC="$REPO_ROOT/xdv-lib/sector/xdv_lib/boot_runtime.ds"
 XDV_LIB_BOOT_RUNTIME_ASM="$REPO_ROOT/xdv-lib/asm/xdv_lib_boot_runtime.asm"
 SHELL_BOOT_UNITS_SRC="$REPO_ROOT/xdv-shell/src/shell_boot_units.ds"
 SHELL_BRIDGE_SRC="$REPO_ROOT/xdv-shell/src/shell_bridge.ds"
+DAL_SRC="$REPO_ROOT/xdv-dal/src/dal.ds"
+CDS_SRC="$REPO_ROOT/xdv-cds/src/cds.ds"
+UMF_SRC="$REPO_ROOT/xdv-umf/src/umf.ds"
+HYPERVISOR_SRC="$REPO_ROOT/xdv-hypervisor/src/hypervisor.ds"
+SDBM_SRC="$REPO_ROOT/xdv-sdbm/src/sdbm.ds"
 KERNEL_SRC="$REPO_ROOT/xdv-kernel/sector/xdv_kernel/src/kernel.ds"
 RUNTIME_BRIDGE_SRC="$REPO_ROOT/xdv-runtime/src/runtime_bridge.ds"
 BOOT_COMBINED_SRC="$SCRIPT_DIR/target/xdv_os_boot_bundle.ds"
@@ -136,6 +146,11 @@ CHECK_TARGETS=(
     "$REPO_ROOT/xdv-boot/src/boot_mbr.ds"
     "$REPO_ROOT/xdv-boot/src/boot_uefi.ds"
     "$REPO_ROOT/xdv-boot/src/boot_stage1.ds"
+    "$DAL_SRC"
+    "$CDS_SRC"
+    "$UMF_SRC"
+    "$HYPERVISOR_SRC"
+    "$SDBM_SRC"
     "$KERNEL_SRC"
     "$REPO_ROOT/xdv-xdvfs/src/xdvfs_mount.ds"
     "$REPO_ROOT/xdv-xdvfs/src/xdvfs_storage_device.ds"
@@ -212,6 +227,11 @@ cat \
     "$RUNTIME_BRIDGE_SRC" \
     "$SHELL_BOOT_UNITS_SRC" \
     "$SHELL_BRIDGE_SRC" \
+    "$DAL_SRC" \
+    "$CDS_SRC" \
+    "$UMF_SRC" \
+    "$HYPERVISOR_SRC" \
+    "$SDBM_SRC" \
     "$KERNEL_SRC" \
     "$XDV_LIB_MAIN_SRC" \
     "$XDV_LIB_BOOT_RUNTIME_SRC" > "$KERNEL_COMBINED_SRC"
@@ -243,13 +263,12 @@ mkdir -p "$SCRIPT_DIR/target/dust"
 nasm -f elf64 "$XDV_LIB_BOOT_RUNTIME_ASM" -o "$XDV_LIB_BOOT_RUNTIME_OBJ"
 
 echo "[5/7] Linking boot.bin via dustlink..."
-shopt -s nullglob
-boot_objs=("$BOOT_OBJ_STAGE_DIR"/*.o)
-boot_objs+=("$XDV_LIB_BOOT_RUNTIME_OBJ")
-if [ ${#boot_objs[@]} -eq 0 ]; then
+mapfile -t boot_stage_objs < <(find "$BOOT_OBJ_STAGE_DIR" -maxdepth 1 -type f -name '*.o' -print | LC_ALL=C sort)
+if [ ${#boot_stage_objs[@]} -eq 0 ]; then
     echo "ERROR: no boot objects found in $BOOT_OBJ_STAGE_DIR"
     exit 1
 fi
+boot_objs=("${boot_stage_objs[@]}" "$XDV_LIB_BOOT_RUNTIME_OBJ")
 echo "  [boot-link] frontend: $DUSTLINK_CMD"
 "$DUSTLINK_CMD" \
     -m elf_x86_64 \
@@ -270,7 +289,7 @@ BOOT_ENTRY_OFFSET=$((16#$boot_entry_hex - 0x10000))
 echo "  [boot-link] entry offset: $BOOT_ENTRY_OFFSET"
 
 echo "[6/7] Linking kernel.bin via dustlink + assembling boot sector (NASM)..."
-kernel_objs=("$KERNEL_OBJ_STAGE_DIR"/*.o)
+mapfile -t kernel_objs < <(find "$KERNEL_OBJ_STAGE_DIR" -maxdepth 1 -type f -name '*.o' -print | LC_ALL=C sort)
 if [ ${#kernel_objs[@]} -eq 0 ]; then
     echo "ERROR: no kernel objects found in $KERNEL_OBJ_STAGE_DIR"
     exit 1

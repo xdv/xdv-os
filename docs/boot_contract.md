@@ -26,7 +26,9 @@ This document defines boot-stage ownership boundaries in `xdv-os`.
 
 ## Kernel Stage (`kernel.bin`)
 
-- Location: linked from `xdv-kernel` + `xdv-runtime` + `xdv-xdvfs`
+- Location: linked from `xdv-kernel` + split kernel dependencies
+  (`xdv-dal`, `xdv-cds`, `xdv-umf`, `xdv-hypervisor`, `xdv-sdbm`) +
+  `xdv-runtime` + `xdv-xdvfs`
 - Responsibility:
   - start kernel runtime,
   - bring runtime bridge/userspace path online,

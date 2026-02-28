@@ -76,6 +76,33 @@ function Get-Crc32([byte[]]$Data) {
     return [uint32](-bnot $crc)
 }
 
+function Get-Sha256([byte[]]$Data) {
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        return $sha.ComputeHash($Data)
+    } finally {
+        $sha.Dispose()
+    }
+}
+
+function New-DeterministicGuid([string]$Label, [byte[]]$BootBytes, [byte[]]$KernelBytes, [byte[]]$PayloadBytes) {
+    $labelBytes = [System.Text.Encoding]::UTF8.GetBytes($Label)
+    $bootHash = Get-Sha256 $BootBytes
+    $kernelHash = Get-Sha256 $KernelBytes
+    $payloadHash = Get-Sha256 $PayloadBytes
+    $seed = New-Object byte[] ($labelBytes.Length + $bootHash.Length + $kernelHash.Length + $payloadHash.Length)
+    [Array]::Copy($labelBytes, 0, $seed, 0, $labelBytes.Length)
+    [Array]::Copy($bootHash, 0, $seed, $labelBytes.Length, $bootHash.Length)
+    [Array]::Copy($kernelHash, 0, $seed, $labelBytes.Length + $bootHash.Length, $kernelHash.Length)
+    [Array]::Copy($payloadHash, 0, $seed, $labelBytes.Length + $bootHash.Length + $kernelHash.Length, $payloadHash.Length)
+    $hash = Get-Sha256 $seed
+    $guidBytes = New-Object byte[] 16
+    [Array]::Copy($hash, 0, $guidBytes, 0, 16)
+    $guidBytes[7] = [byte](($guidBytes[7] -band 0x0F) -bor 0x40)
+    $guidBytes[8] = [byte](($guidBytes[8] -band 0x3F) -bor 0x80)
+    return [Guid]::New($guidBytes)
+}
+
 function Get-RepoRelativePath([string]$RootPath, [string]$Path) {
     $rootResolved = (Resolve-Path $RootPath).Path
     $pathResolved = (Resolve-Path $Path).Path
@@ -332,7 +359,7 @@ function New-UefiStubBinary() {
     $coff = 0x84
     Write-UInt16Le $binary ($coff + 0) 0x8664
     Write-UInt16Le $binary ($coff + 2) 1
-    Write-UInt32Le $binary ($coff + 4) ([UInt32][DateTimeOffset]::UtcNow.ToUnixTimeSeconds())
+    Write-UInt32Le $binary ($coff + 4) 0
     Write-UInt32Le $binary ($coff + 8) 0
     Write-UInt32Le $binary ($coff + 12) 0
     Write-UInt16Le $binary ($coff + 16) 0x00F0
@@ -545,8 +572,10 @@ function Build-UefiImage(
     Write-UInt16Le $image 510 0xAA55
 
     $entryArrayBytes = New-Object byte[] ($partitionEntryCount * $partitionEntrySize)
-    Write-GptPartitionEntry $entryArrayBytes 0 ([Guid]"C12A7328-F81F-11D2-BA4B-00A0C93EC93B") ([Guid]::NewGuid()) $espStartLba ($espStartLba + $espSectors - 1) 0 "XDV ESP"
-    Write-GptPartitionEntry $entryArrayBytes 1 ([Guid]"0FC63DAF-8483-4772-8E79-3D69D8477DE4") ([Guid]::NewGuid()) $xdvfsStartLba ($xdvfsStartLba + $xdvfsSectors - 1) 0 "XDVFS"
+    $espUniqueGuid = New-DeterministicGuid "XDV-ESP" $BootBytes $KernelBytes $PayloadBytes
+    $xdvfsUniqueGuid = New-DeterministicGuid "XDV-XDVFS" $BootBytes $KernelBytes $PayloadBytes
+    Write-GptPartitionEntry $entryArrayBytes 0 ([Guid]"C12A7328-F81F-11D2-BA4B-00A0C93EC93B") $espUniqueGuid $espStartLba ($espStartLba + $espSectors - 1) 0 "XDV ESP"
+    Write-GptPartitionEntry $entryArrayBytes 1 ([Guid]"0FC63DAF-8483-4772-8E79-3D69D8477DE4") $xdvfsUniqueGuid $xdvfsStartLba ($xdvfsStartLba + $xdvfsSectors - 1) 0 "XDVFS"
     $entryCrc = Get-Crc32 $entryArrayBytes
 
     $primaryArrayLba = [UInt64]2
@@ -555,7 +584,7 @@ function Build-UefiImage(
     Set-Bytes $image ([int64]$primaryArrayLba * $SectorSize) $entryArrayBytes
     Set-Bytes $image ([int64]$backupArrayLba * $SectorSize) $entryArrayBytes
 
-    $diskGuid = [Guid]::NewGuid().ToByteArray()
+    $diskGuid = (New-DeterministicGuid "XDV-DISK" $BootBytes $KernelBytes $PayloadBytes).ToByteArray()
     Write-GptHeader $image 1 $backupHeaderLba $firstUsableLba $lastUsableLba $diskGuid $primaryArrayLba $partitionEntryCount $partitionEntrySize $entryCrc
     Write-GptHeader $image $backupHeaderLba 1 $firstUsableLba $lastUsableLba $diskGuid $backupArrayLba $partitionEntryCount $partitionEntrySize $entryCrc
 
